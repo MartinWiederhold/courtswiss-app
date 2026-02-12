@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import '../models/sport.dart';
 import '../services/invite_service.dart';
 import '../services/member_service.dart';
 import '../services/avatar_service.dart';
@@ -986,6 +987,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       ),
       body: ListView(
         children: [
+          // ── Sport Header Banner ──
+          _buildSportHeader(),
+
           // ── Team Info ──
           Padding(
             padding: const EdgeInsets.all(16),
@@ -1392,6 +1396,127 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         ],
       ),
       onTap: () => _openMatch(match),
+    );
+  }
+
+  Widget _buildSportHeader() {
+    final sportKey = widget.team['sport_key'] as String?;
+    final sport = Sport.byKey(sportKey);
+    final color = sport?.color ?? Colors.blueGrey;
+
+    return SizedBox(
+      height: 160,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Background image or gradient
+          if (sport != null)
+            Image.asset(
+              sport.assetPath,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stack) => _sportGradient(sport),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    color.withValues(alpha: 0.6),
+                    color,
+                  ],
+                ),
+              ),
+            ),
+          // Overlay gradient for text readability
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.55),
+                ],
+              ),
+            ),
+          ),
+          // Team name + sport label
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.team['name'] ?? 'Team',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 22,
+                    shadows: [Shadow(blurRadius: 4, color: Colors.black54)],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(sport?.icon ?? Icons.sports,
+                        color: Colors.white70, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      sport?.label ?? 'Sport',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                        shadows: [Shadow(blurRadius: 4, color: Colors.black54)],
+                      ),
+                    ),
+                    if ((widget.team['league'] ?? '').toString().isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '• ${widget.team['league']}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          shadows: [
+                            Shadow(blurRadius: 4, color: Colors.black54)
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sportGradient(Sport sport) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            sport.color.withValues(alpha: 0.7),
+            sport.color,
+          ],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          sport.icon,
+          size: 64,
+          color: Colors.white.withValues(alpha: 0.2),
+        ),
+      ),
     );
   }
 

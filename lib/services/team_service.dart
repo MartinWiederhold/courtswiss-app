@@ -32,6 +32,7 @@ class TeamService {
     String? clubName,
     String? league,
     required int seasonYear,
+    String? sportKey,
   }) async {
     final user = _supabase.auth.currentUser;
     if (user == null) {
@@ -44,6 +45,7 @@ class TeamService {
       'league': league,
       'season_year': seasonYear,
       'created_by': user.id,
+      if (sportKey != null) 'sport_key': sportKey,
     };
 
     // Debug: im Console-Log sichtbar
@@ -81,6 +83,28 @@ class TeamService {
       throw Exception(
         'Team erstellt (id=$teamId), aber Captain-Eintrag fehlgeschlagen: $e',
       );
+    }
+  }
+
+  /// Delete a team by ID. Only the creator / captain should call this
+  /// (RLS enforces the permission on the DB side).
+  static Future<void> deleteTeam(String teamId) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      throw Exception('Not logged in (currentUser is null)');
+    }
+
+    // ignore: avoid_print
+    print('TEAM_DELETE_TAP teamId=$teamId userId=${user.id}');
+
+    try {
+      await _supabase.from('cs_teams').delete().eq('id', teamId);
+      // ignore: avoid_print
+      print('TEAM_DELETE success teamId=$teamId');
+    } catch (e) {
+      // ignore: avoid_print
+      print('TEAM_DELETE error teamId=$teamId err=$e');
+      rethrow;
     }
   }
 }
