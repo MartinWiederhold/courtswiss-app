@@ -435,105 +435,54 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
   // ── Toggle is_player ─────────────────────────────────────
 
-  Future<void> _toggleIsPlayer(Map<String, dynamic> member, bool value) async {
-    final uid = member['user_id'] as String?;
+  /// Guard against concurrent toggle operations.
+  bool _togglingIsPlayer = false;
 
-    if (value) {
-      // ── Turning ON: Captain wants to play ──
-      // 1) Show ranking picker (mandatory)
-      final ranking = await _showRankingPicker(uid);
-      if (ranking == null) return; // cancelled → switch stays off
-
-      try {
-        await TeamPlayerService.upsertCaptainSlot(
-          teamId: widget.teamId,
-          ranking: ranking,
-        );
-        await Future.wait([_loadMembers(), _loadPlayerSlots()]);
-        await _resolveAvatarUrls();
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e')),
-        );
-      }
-    } else {
-      // ── Turning OFF: Captain stops playing ──
-      try {
-        await TeamPlayerService.removeCaptainSlot(teamId: widget.teamId);
-        await Future.wait([_loadMembers(), _loadPlayerSlots()]);
-        await _resolveAvatarUrls();
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e')),
-        );
-      }
-    }
+  /// Source-of-truth: captain has a player slot if their uid is in _claimedMap.
+  bool get _captainPlays {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return false;
+    return _claimedMap.containsKey(uid);
   }
 
-  /// Ranking picker dialog – barrierDismissible: false.
-  /// Returns selected ranking int, or null if cancelled.
-  Future<int?> _showRankingPicker(String? uid) async {
-    final ctrl = TextEditingController();
+  Future<void> _toggleIsPlayer(Map<String, dynamic> member, bool value) async {
+    // Guard: prevent concurrent toggles / rapid double-taps.
+    if (_togglingIsPlayer) return;
+    _togglingIsPlayer = true;
 
-    // Pre-fill with existing ranking from claimed slot
-    if (uid != null && _claimedMap.containsKey(uid)) {
-      final existing = _claimedMap[uid]!['ranking'];
-      if (existing != null) ctrl.text = existing.toString();
-    }
+    // Optimistic UI update
+    final previousPlaying = member['is_playing'];
+    setState(() => member['is_playing'] = value);
 
-    return showDialog<int>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        String? errorText;
-        return StatefulBuilder(
-          builder: (ctx, setStateDialog) => AlertDialog(
-            title: const Text('Dein Ranking'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Als spielender Captain brauchst du\n'
-                  'ein Ranking für die Aufstellung.',
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: ctrl,
-                  decoration: InputDecoration(
-                    labelText: 'Ranking',
-                    hintText: 'z.B. 7',
-                    prefixText: 'R',
-                    errorText: errorText,
-                  ),
-                  keyboardType: TextInputType.number,
-                  autofocus: true,
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx), // cancel → null
-                child: const Text('Abbrechen'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final val = int.tryParse(ctrl.text.trim());
-                  if (val == null || val < 1 || val > 99) {
-                    setStateDialog(
-                        () => errorText = 'Bitte Zahl von 1–99 eingeben');
-                    return;
-                  }
-                  Navigator.pop(ctx, val);
-                },
-                child: const Text('Speichern'),
-              ),
-            ],
-          ),
+    try {
+      if (value) {
+        // ── Turning ON: Captain wants to play ──
+        // Create player slot with name from nickname/profile.
+        // Ranking is optional – captain can edit later.
+        await TeamPlayerService.upsertCaptainSlot(
+          teamId: widget.teamId,
+          ranking: null,
         );
-      },
-    );
+      } else {
+        // ── Turning OFF: Captain stops playing ──
+        // Remove the captain's player slot.
+        await TeamPlayerService.removeCaptainSlot(teamId: widget.teamId);
+      }
+
+      if (!mounted) return;
+      await Future.wait([_loadMembers(), _loadPlayerSlots()]);
+      if (!mounted) return;
+      await _resolveAvatarUrls();
+    } catch (e) {
+      // ── Rollback on error ──
+      if (!mounted) return;
+      setState(() => member['is_playing'] = previousPlaying);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: $e')),
+      );
+    } finally {
+      _togglingIsPlayer = false;
+    }
   }
 
   // ── Invite Share ──────────────────────────────────────────
@@ -607,11 +556,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
   String _roleLabel(Map<String, dynamic> member) {
     final role = member['role'] as String?;
-    final isPlaying = member['is_playing'] as bool? ?? true;
+    final uid = member['user_id'] as String?;
 
     switch (role) {
       case 'captain':
-        return isPlaying ? 'Captain (spielend)' : 'Captain';
+        // Check actual player slot existence, not the is_playing flag.
+        final plays =
+            uid != null && _claimedMap.containsKey(uid);
+        return plays ? 'Captain (spielend)' : 'Captain';
       case 'member':
         return 'Spieler';
       default:
@@ -1016,7 +968,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               child: Row(
                 children: [
                   Text(
-                    'Kader (${_playerSlots.length})',
+                    'Team (${_playerSlots.length})',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const Spacer(),
@@ -1039,7 +991,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               child: Row(
                 children: [
                   Text(
-                    'Kader',
+                    'Team',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const Spacer(),
@@ -1056,7 +1008,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               child: Text(
                 'Noch keine Spieler angelegt.\n'
                 'Lege Spieler mit Name + Ranking an,\n'
-                'damit sich Mitglieder zuordnen können.',
+                'damit sich Spieler zuordnen können.',
                 style: TextStyle(color: Colors.grey, fontSize: 13),
               ),
             ),
@@ -1070,7 +1022,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
-              'Mitglieder (${_loading ? '…' : _members.length})',
+              'Spieler (${_loading ? '…' : _members.length})',
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
@@ -1091,7 +1043,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           else if (_members.isEmpty)
             const Padding(
               padding: EdgeInsets.all(16),
-              child: Center(child: Text('Noch keine Mitglieder.')),
+              child: Center(child: Text('Noch keine Spieler.')),
             )
           else
             ..._buildMemberTiles(),
@@ -1307,10 +1259,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               children: [
                 if (isCaptainRow)
                   Tooltip(
-                    message: 'Ich spiele mit',
+                    message: 'Ich spiele selbst',
                     child: Switch.adaptive(
-                      value: m['is_playing'] == true,
-                      onChanged: (val) => _toggleIsPlayer(m, val),
+                      // Source of truth: does a player slot exist for this uid?
+                      value: _captainPlays,
+                      onChanged: _togglingIsPlayer
+                          ? null // disable during async operation
+                          : (val) => _toggleIsPlayer(m, val),
                     ),
                   ),
                 IconButton(

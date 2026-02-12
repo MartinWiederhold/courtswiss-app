@@ -110,9 +110,10 @@ class TeamPlayerService {
 
   /// Captain creates / updates their own player slot (auto-claimed).
   /// RPC looks up the captain's name from nickname / profile.
+  /// [ranking] is optional – pass `null` to leave ranking empty.
   static Future<Map<String, dynamic>> upsertCaptainSlot({
     required String teamId,
-    required int ranking,
+    int? ranking,
   }) async {
     final result = await _supabase.rpc('upsert_captain_player_slot', params: {
       'p_team_id': teamId,

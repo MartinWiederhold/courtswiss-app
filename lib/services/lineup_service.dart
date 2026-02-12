@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service for the lineup system (cs_match_lineups + cs_match_lineup_slots).
@@ -159,6 +160,39 @@ class LineupService {
       'p_absent_user_id': absentUserId,
     });
     return Map<String, dynamic>.from(result as Map);
+  }
+
+  // ── Batch reorder (for Drag & Drop widget) ──────────────────
+
+  /// Persist a single drag-and-drop reorder by calling [moveSlot] with the
+  /// computed from/to positions.
+  ///
+  /// **Error contract**: throws on failure so the caller (widget) can
+  /// rollback the optimistic UI.  Never silently returns `false`.
+  static Future<void> reorderLineup({
+    required String matchId,
+    required String fromType,
+    required int fromPos,
+    required String toType,
+    required int toPos,
+  }) async {
+    debugPrint('LINEUP_REORDER: matchId=$matchId '
+        'from=$fromType#$fromPos → to=$toType#$toPos');
+    try {
+      await moveSlot(
+        matchId: matchId,
+        fromType: fromType,
+        fromPos: fromPos,
+        toType: toType,
+        toPos: toPos,
+      );
+      debugPrint('LINEUP_REORDER success: matchId=$matchId');
+    } catch (e, st) {
+      debugPrint('LINEUP_REORDER error: matchId=$matchId '
+          'from=$fromType#$fromPos → to=$toType#$toPos err=$e');
+      debugPrint('LINEUP_REORDER stackTrace: $st');
+      rethrow; // Caller (widget) handles rollback
+    }
   }
 
   // ── Display helpers ────────────────────────────────────────

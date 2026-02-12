@@ -1,412 +1,277 @@
 # Testplan – CourtSwiss
 
-> Letzte Aktualisierung: Februar 2026
+> Letzte Aktualisierung: 12. Februar 2026
 
 ---
 
-## 1. Test Strategy
+## 1. Teststrategie
 
-### 1.1 Unit Tests (Dart)
-- Klassierungs-Sortierung (N1..R9)
-- Auto-Lineup Auswahl (Top N + Ersatzliste)
-- Validierungen (Pflichtfelder)
-- Event-Payload-Parsing (getMatchId, formatTitle, formatBody)
+### 1.1 Unit Tests (Pure Dart)
+- Reine Logik-Tests ohne Flutter-Widget-Abhängigkeit
+- Laufen mit `flutter test` (oder `dart test`)
+- Fokus: Parsing, Berechnungen, Zustandstransformationen
 
 ### 1.2 Widget Tests (Flutter UI)
-- Login Screen Rendering
-- Teamliste korrekt
-- Match-Liste korrekt
-- Verfügbarkeit Buttons (Ja / Nein / Vielleicht)
-- EventInboxScreen: Event-Liste, Unread-Badge, Team-Filter
-- NotificationSettingsScreen: Switches korrekt
+- Rendern einzelner Widgets/Screens im Test-Harness
+- **Status: Placeholder** – nur Default-Counter-Test vorhanden (`widget_test.dart`)
+- **TODO**: Echte Widget-Tests für kritische Screens (MatchDetail, TeamDetail, EventInbox)
 
 ### 1.3 Integration Tests (E2E, manuell)
-- Login → Team erstellen → Spieler einladen → Match erstellen → Availability → Lineup publishen → Event in Inbox → Push auf Android
-- Ersatzkette: Absage → Auto-Promotion → Event erzeugt → Delivery erzeugt
+- Vollständige Flows manuell auf Gerät/Simulator
+- Kein automatisiertes E2E-Framework eingerichtet
+- **TODO**: Flutter Integration Tests oder Patrol für kritische Flows
 
 ### 1.4 Manual QA
-- Gerätespezifische Tests (Android / iOS)
+- Gerätespezifische Tests (Android / iOS Simulator)
 - Push-Empfang auf Android verifizieren
-- iOS: App-Start ohne Crash verifizieren (kein Push)
+- iOS: App-Start ohne Crash (kein Push konfiguriert)
 
 ---
 
-## 2. DB-Level Tests
+## 2. Vorhandene automatisierte Tests
+
+### Ausführung
+
+```bash
+# Alle Tests
+flutter test
+
+# Einzelne Suite
+flutter test test/lineup_reorder_test.dart
+
+# Statische Analyse
+flutter analyze
+```
+
+### Test-Suites (test/)
+
+| Datei | Zweck | Tests |
+|-------|-------|-------|
+| `lineup_reorder_test.dart` | `applyReorder`, `computeMoveSteps`, `moveStepToRpcParams` – Off-by-one, Drag Up/Down, No-op, Cross-Boundary, Immutability, End-to-End Pipeline | ~25 |
+| `lineup_rules_test.dart` | `detectLineupViolations` – Missing Starter, Duplicate Player, Ranking Order, Combined Violations, Missing Ranking Data, Edge Cases | ~12 |
+| `sub_request_timeout_test.dart` | `parseExpiresAt`, `isRequestExpired`, `isRequestActionable`, `expiresInLabel` – Parsing, Expiry-Status, Countdown-Labels | ~24 |
+| `carpool_passenger_test.dart` | `CarpoolPassenger.fromMap` – DB Column Names, Legacy Alias, Edge Cases | ~6 |
+| `dinner_rsvp_test.dart` | `DinnerRsvp.fromMap` – Alle Felder, optionale Felder, Defaults | ~6 |
+| `expense_split_test.dart` | `ExpenseShare.fromMap` + Expense-Split-Logik – is_paid, paid_at, Split-Berechnung | ~8 |
+| `widget_test.dart` | Default Flutter Counter Widget-Test (**Placeholder**, nicht aussagekräftig) | 1 |
+
+**Gesamt: ~82 echte Unit-Tests** über 6 Suites.
+
+### widget_test.dart
+
+Der Default-Widget-Test (`widget_test.dart`) ist der automatisch generierte Counter-Test von `flutter create`. Er testet nicht die App-Funktionalität und dient nur als Platzhalter. Geplant: Ersetzen durch echte Widget-Tests für kritische Screens (MatchDetail, TeamDetail, EventInbox).
+
+---
+
+## 3. Test-Scope pro Domain
+
+### 3.1 Auth & Profile
+
+| Art | Status | Details |
+|-----|--------|---------|
+| Unit | – | Keine testbare Logik extrahiert |
+| Widget | ❌ TODO | AuthScreen, AuthGate |
+| Manual | ✅ | Anonymous Login, Magic Link, Session Restore |
+
+### 3.2 Teams & Invites
+
+| Art | Status | Details |
+|-----|--------|---------|
+| Unit | ❌ TODO | Team-Erstellung, Invite-Token-Parsing |
+| Widget | ❌ TODO | TeamsScreen, TeamDetailScreen |
+| Manual | ✅ | CRUD, Invite-Link, Swipe-to-Delete, sport_key, "Ich spiele selbst" Toggle |
+
+### 3.3 Matches & Availability
+
+| Art | Status | Details |
+|-----|--------|---------|
+| Unit | ❌ TODO | – |
+| Widget | ❌ TODO | CreateMatchScreen, Availability Buttons |
+| Manual | ✅ | Erstellen, yes/no/maybe, Captain-Übersicht |
+
+### 3.4 Lineup
+
+| Art | Status | Details |
+|-----|--------|---------|
+| Unit | ✅ | `lineup_reorder_test.dart` – applyReorder, computeMoveSteps, moveStepToRpcParams |
+| Unit | ✅ | `lineup_rules_test.dart` – detectLineupViolations (Ranking, Missing, Duplicate) |
+| Widget | ❌ TODO | LineupReorderList, Violation Banner |
+| Manual | ✅ | Generate, Publish, Drag & Drop, Reorder Persist + Rollback, Violation Banner |
+
+### 3.5 Ersatzanfragen (Sub-Requests)
+
+| Art | Status | Details |
+|-----|--------|---------|
+| Unit | ✅ | `sub_request_timeout_test.dart` – parseExpiresAt, isRequestExpired, isRequestActionable, expiresInLabel |
+| Widget | ❌ TODO | Sub-Request UI Cards, Accept/Decline Buttons |
+| Manual | ✅ | Create, Accept/Decline, Timeout-Anzeige, expireStale on-load |
+
+### 3.6 Fahrgemeinschaften (Carpool)
+
+| Art | Status | Details |
+|-----|--------|---------|
+| Unit | ✅ | `carpool_passenger_test.dart` – CarpoolPassenger.fromMap Parsing |
+| Widget | ❌ TODO | Carpool Section in MatchDetail |
+| Manual | ✅ | Create Offer, Join/Leave, Delete, Multi-Offer, Persistenz |
+
+### 3.7 Essen (Dinner)
+
+| Art | Status | Details |
+|-----|--------|---------|
+| Unit | ✅ | `dinner_rsvp_test.dart` – DinnerRsvp.fromMap Parsing |
+| Widget | ❌ TODO | Dinner RSVP Buttons |
+| Manual | ✅ | yes/no/maybe, Note, Upsert |
+
+### 3.8 Spesen (Expenses)
+
+| Art | Status | Details |
+|-----|--------|---------|
+| Unit | ✅ | `expense_split_test.dart` – ExpenseShare.fromMap, Split-Logik, is_paid/paid_at |
+| Widget | ❌ TODO | Expense Section, Share-Paid-Toggle |
+| Manual | ✅ | Create Expense, Equal Split, is_paid Toggle, Payer auto-paid, Delete |
+
+### 3.9 Events & Inbox
+
+| Art | Status | Details |
+|-----|--------|---------|
+| Unit | ❌ TODO | Event-Payload-Parsing |
+| Widget | ❌ TODO | EventInboxScreen, Unread-Badge |
+| Manual | ✅ | Events sichtbar, Read-Tracking, Badge, Team-Filter, Navigation zu Match |
+
+### 3.10 Push-Pipeline
+
+| Art | Status | Details |
+|-----|--------|---------|
+| Unit | ❌ TODO | – |
+| Manual | ✅ | Token-Registration (Android) ✅, Delivery-Fanout (DB) ✅ |
+| Offen | ❌ | Push-Send Worker nicht implementiert → Deliveries bleiben `pending` |
+| Offen | ❌ | iOS Push deaktiviert (kein APNs Key / GoogleService-Info.plist) |
+
+---
+
+## 4. DB-Level Tests (manuell via SQL Editor)
 
 ### T-DB-01: Team Creation
 
-**Preconditions:**
-- Authentifizierter User (anonymous oder magic link)
-
 **Steps:**
-1. RPC oder INSERT in cs_teams mit name, season_year, created_by
+1. INSERT in cs_teams mit name, season_year, sport_key, created_by
 2. Prüfe cs_team_members Eintrag
 
-**Expected Result:**
-- cs_teams-Row existiert mit korrektem name, season_year, created_by
-- cs_team_members-Row existiert mit team_id, user_id=auth.uid(), role='captain'
+**Expected:**
+- cs_teams-Row mit korrektem name, season_year, sport_key, created_by
+- cs_team_members-Row mit team_id, user_id=auth.uid(), role='captain'
 - RLS: Anderer User ohne Membership kann Team nicht sehen
 
----
-
-### T-DB-02: Match Creation
-
-**Preconditions:**
-- Team existiert (T-DB-01)
-- User ist Captain des Teams
+### T-DB-02: Match + Availability
 
 **Steps:**
 1. INSERT in cs_matches mit team_id, opponent, match_at
+2. UPSERT in cs_match_availability mit status='yes', dann status='no'
 
-**Expected Result:**
-- cs_matches-Row existiert
-- team_id referenziert korrektes Team
-- Opponent und match_at korrekt gespeichert
-- RLS: Nur Team-Mitglieder können Match sehen
+**Expected:**
+- Availability: UNIQUE (match_id, user_id), Status wird überschrieben, updated_at aktualisiert
 
----
-
-### T-DB-03: Availability
-
-**Preconditions:**
-- Match existiert (T-DB-02)
-- User ist Team-Mitglied
+### T-DB-03: Lineup Publish + Event-Trigger
 
 **Steps:**
-1. UPSERT in cs_match_availability mit match_id, user_id, status='yes'
-2. Erneutes UPSERT mit status='no'
+1. `generate_lineup` RPC → Draft
+2. `publish_lineup` RPC
 
-**Expected Result:**
-- cs_match_availability-Row existiert mit korrektem match_id und user_id
-- UNIQUE Constraint auf (match_id, user_id) – kein Duplikat
-- Status wird korrekt überschrieben (yes → no)
-- updated_at wird aktualisiert
-
----
-
-### T-DB-04: Lineup Publish
-
-**Preconditions:**
-- Match existiert mit mindestens 4 verfügbaren Spielern
-- Lineup wurde via `generate_lineup` als Draft erstellt
-
-**Steps:**
-1. RPC `publish_lineup` mit match_id aufrufen
-
-**Expected Result:**
+**Expected:**
 - cs_match_lineups.status = 'published'
-- cs_match_lineup_slots enthalten korrekte Positionen (Starter + Reserve)
-- Trigger `trg_emit_lineup_published_event` feuert
-- cs_events-Row mit event_type='lineup_published' existiert
-- cs_event_deliveries-Rows für alle Team-Mitglieder erzeugt
+- cs_events-Row: event_type='lineup_published'
+- cs_event_deliveries-Rows für alle Team-Mitglieder (außer Captain)
 
----
-
-### T-DB-05: Event Creation
-
-**Preconditions:**
-- Team mit mindestens 2 Mitgliedern
-- Match mit published Lineup
-
-**Steps:**
-1. Lineup publishen (Trigger-basiert)
-2. Oder: Spieler sagt ab → auto_handle_absence (Trigger-basiert)
-
-**Expected Result:**
-- cs_events-Row existiert
-- team_id ist korrekt gesetzt
-- match_id ist korrekt gesetzt
-- event_type ist gesetzt ('lineup_published' | 'replacement_promoted' | 'no_reserve_available')
-- created_by enthält den auslösenden User
-- payload ist valides JSON mit mindestens team_id und match_id
-- recipient_user_id ist NULL für Broadcasts, gesetzt für gezielte Events
-
----
-
-### T-DB-06: Delivery Fanout
-
-**Preconditions:**
-- cs_events-Row wurde erzeugt (T-DB-05)
-- Team hat mindestens 2 Mitglieder mit user_id in cs_team_members
+### T-DB-04: Delivery Fanout
 
 **Steps:**
 1. INSERT in cs_events (direkt oder via Trigger)
 
-**Expected Result:**
-- cs_event_deliveries-Rows erzeugt (1 pro Empfänger)
-- user_id jeder Delivery ∈ cs_team_members.user_id für das Team
-- channel = 'push'
-- status = 'pending' (wenn Push-Prefs aktiv) oder 'skipped' (wenn deaktiviert)
-- Kein Delivery für den Ersteller (created_by wird übersprungen)
-- Kein Delivery für Nicht-Mitglieder
-- UNIQUE auf (event_id, user_id, channel) – keine Duplikate
+**Expected:**
+- cs_event_deliveries: 1 Row pro Empfänger, channel='push'
+- status='pending' (Push-Prefs aktiv) oder 'skipped' (deaktiviert)
+- Kein Delivery für created_by
 
----
-
-### T-DB-07: Device Token Registration
-
-**Preconditions:**
-- Authentifizierter User
+### T-DB-05: Sub-Request Create + Expire
 
 **Steps:**
-1. RPC `cs_upsert_device_token` mit platform='android', token='fcm_token_xxx', device_id='uuid-device-1'
-2. Erneuter Aufruf mit neuem token aber gleichem device_id
+1. `cs_create_sub_request` RPC → pending Request mit expires_at
+2. Warte oder setze expires_at in die Vergangenheit
+3. `cs_expire_sub_requests()` aufrufen
 
-**Expected Result:**
-- cs_device_tokens-Row existiert mit user_id=auth.uid()
-- token korrekt gespeichert
-- device_id korrekt gespeichert
-- enabled = true
-- UNIQUE auf (user_id, device_id)
-- Bei erneutem Aufruf: token wird aktualisiert (kein neuer Row)
-- updated_at und last_seen_at aktualisiert
+**Expected:**
+- Request status='expired', responded_at gesetzt
+- `cs_expire_sub_requests()` ist idempotent (mehrfacher Aufruf ändert nichts)
 
----
-
-### T-DB-08: Token Reassignment bei Auth Change
-
-**Preconditions:**
-- User A hat Token registriert (T-DB-07)
-- User B loggt sich auf dem gleichen Gerät ein
+### T-DB-06: Device Token Upsert + Reassignment
 
 **Steps:**
-1. User B ruft `cs_upsert_device_token` mit demselben token und/oder device_id auf
+1. `cs_upsert_device_token` mit platform='android', token, device_id
+2. Erneuter Aufruf mit neuem token, gleichem device_id → Update
+3. Anderer User mit gleichem token → ALTER Row gelöscht, neuer Row erstellt
 
-**Expected Result:**
-- Alter Row von User A mit gleichem token wird gelöscht (DELETE WHERE token=X AND user_id≠B)
-- Alter Row von User A mit gleichem device_id wird gelöscht (DELETE WHERE device_id=X AND user_id≠B)
-- Neuer Row für User B wird erstellt
-- Es gibt keinen Row mehr der token/device_id unter User A führt
-
----
-
-### T-DB-09: Delivery Status Update
-
-**Preconditions:**
-- cs_event_deliveries-Row mit status='pending' existiert (T-DB-06)
-
-**Steps:**
-1. UPDATE status='sent', processed_at=now(), attempts=1
-2. Oder: UPDATE status='failed', last_error='FCM error: invalid token', attempts=1
-
-**Expected Result:**
-- Bei Erfolg: status='sent', processed_at gesetzt, attempts=1
-- Bei Fehler: status='failed', last_error enthält Fehlerbeschreibung, attempts hochgezählt
-- processed_at ist nicht NULL nach Verarbeitung
-
-> **Hinweis:** Aktuell wird kein Edge Worker ausgeführt. Deliveries bleiben auf status='pending'.
+**Expected:**
+- UNIQUE (user_id, device_id)
+- Stale Tokens (gleicher token, anderer user) werden bereinigt
 
 ---
 
-## 3. Android Push Tests
-
-### T-PUSH-01: Android Token Registration
-
-**Preconditions:**
-- Android-Gerät mit installierbarer App
-- Firebase-Projekt korrekt konfiguriert (google-services.json vorhanden)
-- User eingeloggt (anonymous oder magic link)
-
-**Steps:**
-1. App starten
-2. PushService.initPush() wird aufgerufen
-3. FCM Token wird via FirebaseMessaging.instance.getToken() geholt
-
-**Expected Result:**
-- cs_device_tokens enthält Row mit user_id=aktueller User, platform='android'
-- token ist nicht leer
-- device_id ist stabile UUID aus SharedPreferences
-- enabled = true
-- Debug-Log zeigt: `PUSH_INIT userId=... tokenPrefix=...`
-
----
-
-### T-PUSH-02: Delivery findet Token
-
-**Preconditions:**
-- User hat registrierten Token (T-PUSH-01)
-- Event wird erzeugt (T-DB-05)
-- Delivery mit status='pending' existiert (T-DB-06)
-
-**Steps:**
-1. SQL Query: `SELECT d.*, t.token FROM cs_event_deliveries d JOIN cs_device_tokens t ON t.user_id = d.user_id WHERE d.status = 'pending'`
-
-**Expected Result:**
-- JOIN liefert Ergebnis (Token gefunden für Delivery-User)
-- t.token ist nicht NULL
-- t.enabled = true
-- t.user_id = d.user_id (kein Mismatch)
-
----
-
-### T-PUSH-03: Delivery Status nach Push-Send
-
-**Preconditions:**
-- Edge Worker (oder manueller Test) verarbeitet pending Delivery
-
-**Steps:**
-1. Worker holt pending Deliveries
-2. Joined mit cs_device_tokens
-3. Sendet FCM HTTP v1 Request
-4. Updated Delivery-Status
-
-**Expected Result:**
-- Bei Erfolg: status='sent', processed_at gesetzt
-- Bei Fehler: status='failed', last_error enthält FCM Error, attempts++
-
-> **Hinweis:** Edge Worker ist aktuell nicht produktiv. Dieser Test ist für die zukünftige Implementierung dokumentiert.
-
----
-
-### T-PUSH-04: iOS wird übersprungen
-
-**Preconditions:**
-- iOS-Gerät oder Simulator
-- App installiert
-
-**Steps:**
-1. App starten auf iOS
-2. PushService.initPush() wird aufgerufen
-
-**Expected Result:**
-- Platform.isIOS Check verhindert FCM-Initialisierung
-- Kein Token-Registration-Versuch
-- Kein Eintrag in cs_device_tokens für iOS
-- App stürzt nicht ab (kein Crash wegen fehlender GoogleService-Info.plist)
-- Firebase.initializeApp() wird mit try/catch abgefangen
-
----
-
-## 4. Integration Tests (Manual QA)
+## 5. Integration Tests (Manual QA Flows)
 
 ### T-INT-01: Vollständiger Team-Flow
+1. Team erstellen (Name, Saison, Sportart, "Ich spiele selbst" Toggle)
+2. Invite-Link generieren + öffnen → Team beitreten
+3. ClaimScreen → Spieler-Profil claimen
 
-**Steps:**
-1. User A: Team erstellen (Name, Saison)
-2. User A: Invite-Link generieren
-3. User B: Invite-Link öffnen → Team beitreten
-4. User B: ClaimScreen → Spieler-Profil claimen
+### T-INT-02: Match + Lineup + Reorder
+1. Captain: Match erstellen
+2. Spieler: Availability = 'yes'
+3. Captain: Lineup generieren (Draft)
+4. Captain: Drag & Drop Reorder → prüfe Persist + Rollback bei Fehler
+5. Captain: Lineup publishen → Event in Inbox
 
-**Expected Result:**
-- cs_teams-Row existiert
-- cs_team_members: 2 Rows (Captain + Member)
-- cs_team_players.user_id gesetzt für User B
-- Beide User sehen Team in TeamsScreen
+### T-INT-03: Absage + Auto-Promotion + Sub-Request
+1. Starter: Availability = 'no' → Auto-Promotion
+2. Captain: Sub-Request erstellen → pending mit expires_at
+3. Ersatz: Accept → Lineup-Slot aktualisiert
+4. Oder: Decline → Captain kann erneut anfragen
+5. Oder: Timeout → Request expired, nächster Kandidat
 
----
+### T-INT-04: Carpool + Dinner + Expenses
+1. Driver: Carpool-Angebot erstellen
+2. Spieler: Join/Leave
+3. Spieler: Dinner RSVP = 'yes'
+4. Captain: Expense erstellen → Split nur unter Dinner-"yes"
+5. Spieler: Share als bezahlt markieren
 
-### T-INT-02: Match + Availability + Lineup
-
-**Steps:**
-1. Captain: Match erstellen (Gegner, Datum)
-2. Spieler A: Availability = 'yes'
-3. Spieler B: Availability = 'yes'
-4. Captain: Lineup generieren (Draft)
-5. Captain: Lineup publishen
-
-**Expected Result:**
-- cs_matches-Row existiert
-- cs_match_availability: 2 Rows
-- cs_match_lineups.status = 'published'
-- cs_match_lineup_slots: Starter + Reserve korrekt
-- cs_events: Row mit event_type='lineup_published'
-- cs_event_deliveries: Rows für alle Team-Mitglieder (außer Captain)
-- EventInboxScreen: Event sichtbar für Spieler A und B
-
----
-
-### T-INT-03: Absage + Auto-Promotion
-
-**Steps:**
-1. Spieler A (Starter): Availability = 'no'
-2. Trigger `trg_availability_absence` feuert
-3. `auto_handle_absence` RPC läuft
-
-**Expected Result:**
-- Spieler A wird aus cs_match_lineup_slots entfernt
-- Nächster Ersatz rückt auf Starter-Position
-- cs_lineup_events: Row mit event_type='auto_promotion'
-- cs_events: Broadcast-Event + gezieltes Event an nachgerückten Spieler
-- cs_event_deliveries: Rows für betroffene User
-- EventInboxScreen: "Ersatz ist nachgerückt" Event sichtbar
-
----
-
-### T-INT-04: Event Inbox + Read
-
-**Steps:**
-1. User öffnet EventInboxScreen
-2. Unread-Events sind visuell hervorgehoben
-3. User tappt auf Event
-
-**Expected Result:**
-- Unread-Badge (Glocke) zeigt korrekte Zahl
-- cs_event_reads-Row wird bei Tap erzeugt
-- Event wird als gelesen markiert (nicht mehr fett/hervorgehoben)
-- Bei match_id: Navigation zu MatchDetailScreen
-- Bei fehlendem Match: SnackBar "Match nicht verfügbar"
-
----
-
-### T-INT-05: Android Push Empfang
-
-**Steps:**
-1. User B: App im Hintergrund auf Android-Gerät
-2. User A (Captain): Lineup publishen
-3. Event + Delivery werden erzeugt
-4. Edge Worker sendet Push (wenn produktiv)
-
-**Expected Result:**
-- FCM Push-Notification wird auf Android-Gerät angezeigt
-- Tap auf Notification: App öffnet MatchDetailScreen
-- cs_event_deliveries.status = 'sent'
-
-> **Hinweis:** Aktuell nur manuell testbar, da Edge Worker nicht produktiv ist. Push-Empfang kann via Firebase Console (Test-Nachricht) verifiziert werden.
-
----
+### T-INT-05: Event Inbox + Push
+1. Event erzeugen (via Lineup Publish)
+2. EventInboxScreen: Event sichtbar, Unread-Badge korrekt
+3. Tap → cs_event_reads erzeugt
+4. Android: Push-Empfang prüfen (Firebase Console Test-Nachricht)
 
 ### T-INT-06: Token Re-Assignment
-
-**Steps:**
 1. User A: App starten → Token registriert
-2. User A: Magic-Link-Login (neue user_id)
-3. PushService.onAuthStateChange feuert
-
-**Expected Result:**
-- cs_device_tokens: alter Row mit User-A-anonymous-uid gelöscht
-- cs_device_tokens: neuer Row mit User-A-magic-link-uid erstellt
-- Token und device_id bleiben gleich, nur user_id ändert sich
+2. User A: Magic-Link-Login → neue user_id
+3. PushService.onAuthStateChange → Token unter neuer user_id
 
 ---
 
-## 5. Known Gaps & Out of Scope
+## 6. Testdaten (Seed)
 
-| Bereich | Status | Details |
-|---------|--------|---------|
-| Automatisierte Unit Tests | ❌ Nicht implementiert | Nur Default Flutter Widget-Test vorhanden |
-| Automatisierte Widget Tests | ❌ Nicht implementiert | Keine Screen-Tests |
-| CI/CD Pipeline | ❌ Nicht eingerichtet | Kein GitHub Actions / Codemagic Setup |
-| Edge Worker (Push-Send) | ❌ Nicht produktiv | Deliveries bleiben auf 'pending' |
-| iOS Push Notifications | ❌ Out of Scope | GoogleService-Info.plist fehlt, APNs Key nicht konfiguriert |
-| Fahrgemeinschaften (Epic 7) | ❌ Nicht implementiert | Keine DB-Tabellen, kein UI |
-| Essen & Spesen (Epic 8) | ❌ Nicht implementiert | Keine DB-Tabellen, kein UI |
-| Offline Support | ❌ Nicht implementiert | Kein lokaler Cache |
-| Load / Performance Tests | ❌ Nicht geplant | Keine Benchmarks |
+Es existieren keine separaten Seed-Dateien. Testdaten werden manuell über die App-UI oder SQL Editor erstellt.
 
----
-
-## 6. Seed Data (Testdaten)
-
-Minimale Seed-Daten für manuelle Tests:
+### Minimaler Seed (SQL)
 
 ```sql
--- 1. Team erstellen
-INSERT INTO cs_teams (id, name, season_year, created_by)
+-- 1. Team
+INSERT INTO cs_teams (id, name, season_year, sport_key, created_by)
 VALUES (
   'aaaaaaaa-0000-0000-0000-000000000001',
   'TC Muster Herren 3. Liga',
   2026,
-  '<captain_user_id>'
+  'tennis',
+  '<captain_user_id>'  -- ersetzen mit echter UUID aus auth.users
 );
 
 -- 2. Captain als Team-Member
@@ -425,7 +290,13 @@ VALUES (
   'member'
 );
 
--- 4. Match
+-- 4. Spieler-Slots (für Lineup)
+INSERT INTO cs_team_players (team_id, first_name, last_name, ranking, user_id)
+VALUES
+  ('aaaaaaaa-0000-0000-0000-000000000001', 'Max',   'Muster',  3, '<captain_user_id>'),
+  ('aaaaaaaa-0000-0000-0000-000000000001', 'Anna',  'Beispiel', 5, '<member_user_id>');
+
+-- 5. Match
 INSERT INTO cs_matches (id, team_id, opponent, match_at, is_home, created_by)
 VALUES (
   'bbbbbbbb-0000-0000-0000-000000000001',
@@ -435,81 +306,95 @@ VALUES (
   true,
   '<captain_user_id>'
 );
-
--- 5. Event (manuell, normalerweise via Trigger)
-INSERT INTO cs_events (id, team_id, match_id, event_type, title, body, payload, created_by)
-VALUES (
-  'cccccccc-0000-0000-0000-000000000001',
-  'aaaaaaaa-0000-0000-0000-000000000001',
-  'bbbbbbbb-0000-0000-0000-000000000001',
-  'lineup_published',
-  'Aufstellung veröffentlicht',
-  'Die Aufstellung für TC Gegner ist online.',
-  '{"team_id":"aaaaaaaa-0000-0000-0000-000000000001","match_id":"bbbbbbbb-0000-0000-0000-000000000001"}'::jsonb,
-  '<captain_user_id>'
-);
-
--- 6. Delivery (wird normalerweise via Fanout-Trigger erzeugt)
-INSERT INTO cs_event_deliveries (event_id, user_id, channel, status)
-VALUES (
-  'cccccccc-0000-0000-0000-000000000001',
-  '<member_user_id>',
-  'push',
-  'pending'
-);
-
--- 7. Device Token
-INSERT INTO cs_device_tokens (user_id, platform, token, device_id, enabled)
-VALUES (
-  '<member_user_id>',
-  'android',
-  'fcm_test_token_abc123def456',
-  'device-uuid-0001',
-  true
-);
 ```
 
-> **Hinweis:** `<captain_user_id>` und `<member_user_id>` durch echte UUIDs aus auth.users ersetzen.
+> **Hinweis:** `<captain_user_id>` und `<member_user_id>` durch echte UUIDs aus `auth.users` ersetzen. Am einfachsten: App starten → Anonymous Login → UUID aus Supabase Dashboard ablesen.
 
 ---
 
 ## 7. Regression Checklist (vor Release)
 
-- [ ] Bestehende Supabase-Website unverändert: keine fremden Tabellen/Views/Functions geändert
-- [ ] App-Tabellen sind ausschließlich `cs_*`
-- [ ] RLS ist aktiv auf allen cs_*-Tabellen
-- [ ] Storage (Avatare) ist geschützt (nur eigene Uploads)
+### Infrastruktur
+- [ ] Bestehende Supabase-Website unverändert (keine fremden Tabellen geändert)
+- [ ] App-Tabellen ausschließlich `cs_*`
+- [ ] RLS aktiv auf allen cs_*-Tabellen
+- [ ] Storage (Avatare) geschützt
+
+### Auth
 - [ ] Anonymous Auth funktioniert (App-Start ohne Login)
 - [ ] Magic Link Login funktioniert
-- [ ] Team erstellen + Invite funktioniert
-- [ ] Match + Availability + Lineup Flow funktioniert
-- [ ] Auto-Promotion bei Absage funktioniert
-- [ ] Events werden in cs_events erzeugt
-- [ ] Deliveries werden in cs_event_deliveries erzeugt
-- [ ] EventInboxScreen zeigt Events korrekt
-- [ ] Android: FCM Token wird registriert
-- [ ] Android: Push-Empfang funktioniert (Firebase Console Test)
-- [ ] iOS: App startet ohne Crash (kein Push)
+
+### Team
+- [ ] Team erstellen (mit Sportart + "Ich spiele selbst" Toggle)
+- [ ] Invite-Link generieren + akzeptieren
+- [ ] Team löschen (Swipe-to-Delete + Confirm)
+
+### Match & Lineup
+- [ ] Match erstellen + Availability setzen
+- [ ] Lineup generieren + publishen
+- [ ] Drag & Drop Reorder (Captain only, draft only)
+- [ ] Regelverstoss-Warnung (Ranking, Missing, Duplicate)
+- [ ] Auto-Promotion bei Absage
+
+### Ersatzanfragen
+- [ ] Sub-Request erstellen → pending mit expires_at
+- [ ] Accept/Decline funktioniert
+- [ ] Timeout (30 min) → expired, kein Accept mehr möglich
+- [ ] expireStale on-load funktioniert
+
+### Carpool, Dinner, Expenses
+- [ ] Carpool: Create/Join/Leave/Delete
+- [ ] Dinner: yes/no/maybe RSVP
+- [ ] Expense: Create, Equal Split (nur Dinner "yes"), is_paid Toggle
+
+### Events & Push
+- [ ] Events werden in cs_events erzeugt (Trigger)
+- [ ] Deliveries werden in cs_event_deliveries erzeugt (Fanout)
+- [ ] EventInboxScreen zeigt Events, Unread-Badge korrekt
+- [ ] Android: FCM Token registriert
+- [ ] iOS: App startet ohne Crash
+
+### Tests
+- [ ] `flutter test` – alle Tests grün
+- [ ] `flutter analyze` – keine Errors
 
 ---
 
 ## 8. Test Coverage Status (Feb 2026)
 
-| Bereich | Automatisiert | Manuell getestet | Abdeckung |
+| Bereich | Unit Tests | Manual QA | Abdeckung |
 |---------|:---:|:---:|:---:|
-| Auth (Anonymous + Magic Link) | ❌ | ✅ | ~70% |
-| Team CRUD + Invite | ❌ | ✅ | ~80% |
-| Match CRUD | ❌ | ✅ | ~80% |
-| Availability | ❌ | ✅ | ~90% |
-| Lineup (Generate, Publish) | ❌ | ✅ | ~80% |
-| Auto-Promotion (Ersatzkette) | ❌ | ✅ | ~70% |
-| Event-System (cs_events) | ❌ | ✅ | ~60% |
-| Delivery Fanout | ❌ | ✅ | ~50% |
-| Android Push (Token) | ❌ | ✅ | ~60% |
-| iOS Push | ❌ | ❌ | 0% (Out of Scope) |
-| Player Claim | ❌ | ✅ | ~70% |
-| Avatar Upload | ❌ | ✅ | ~60% |
-| Edge Worker | ❌ | ❌ | 0% (nicht implementiert) |
-| **Gesamt** | **0%** | **~65%** | **~55%** |
+| Auth (Anonymous + Magic Link) | – | ✅ | ~70% |
+| Teams + Invites + sport_key | – | ✅ | ~80% |
+| Matches + Availability | – | ✅ | ~80% |
+| Lineup (Generate, Publish) | – | ✅ | ~80% |
+| Lineup Reorder (Drag & Drop) | ✅ ~25 Tests | ✅ | ~90% |
+| Lineup Rules (Violations) | ✅ ~12 Tests | ✅ | ~90% |
+| Sub-Request Timeout | ✅ ~24 Tests | ✅ | ~85% |
+| Ersatzkette (Auto-Promotion) | – | ✅ | ~70% |
+| Carpool (Parsing) | ✅ ~6 Tests | ✅ | ~75% |
+| Dinner (Parsing) | ✅ ~6 Tests | ✅ | ~75% |
+| Expenses (Parsing + Split) | ✅ ~8 Tests | ✅ | ~80% |
+| Event-System (cs_events) | – | ✅ | ~60% |
+| Push-Pipeline (Token) | – | ✅ | ~60% |
+| Push-Send (Edge Worker) | – | ❌ | 0% (nicht impl.) |
+| iOS Push | – | ❌ | 0% (out of scope) |
+| Player Claim | – | ✅ | ~70% |
+| Avatar Upload | – | ✅ | ~60% |
+| **Gesamt** | **~82 Tests** | **~75%** | **~70%** |
 
-> **Fazit:** Keine automatisierten Tests vorhanden. Gesamte Testabdeckung basiert auf manueller QA. Priorität für nächsten Sprint: Unit Tests für Event-Payload-Logik und DB-Trigger-Tests via pgTAP oder SQL-Skripte.
+---
+
+## 9. Offene Lücken & TODOs
+
+| # | Bereich | Status | Nächster Schritt |
+|---|---------|--------|------------------|
+| 1 | Widget Tests | ❌ Nicht vorhanden | Echte Widget-Tests für MatchDetailScreen, TeamDetailScreen, EventInboxScreen |
+| 2 | Integration Tests (automatisiert) | ❌ Nicht vorhanden | Flutter Integration Tests oder Patrol für kritische E2E Flows |
+| 3 | CI/CD Pipeline | ❌ Nicht eingerichtet | GitHub Actions: `flutter test` + `flutter analyze` auf PR |
+| 4 | Service-Tests | ❌ TODO | Unit-Tests für TeamService, MatchService, LineupService (mit Mock Supabase Client) |
+| 5 | DB-Trigger-Tests | ❌ TODO | pgTAP oder SQL-Skripte für Event-Trigger, Fanout, Auto-Promotion |
+| 6 | Push-Send Worker | ❌ Nicht implementiert | Edge Function + Tests für Delivery Processing |
+| 7 | iOS Push | ❌ Out of Scope | APNs Key + GoogleService-Info.plist konfigurieren |
+| 8 | Offline Support | ❌ Nicht implementiert | Kein lokaler Cache, kein Test nötig |
+| 9 | Load / Performance | ❌ Nicht geplant | Keine Benchmarks |

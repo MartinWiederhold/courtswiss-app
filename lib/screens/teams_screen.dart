@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/sport.dart';
 import '../services/team_service.dart';
+import '../services/team_player_service.dart';
 import '../services/event_service.dart';
 import 'sport_selection_screen.dart';
 import 'team_detail_screen.dart';
@@ -20,9 +21,6 @@ class _TeamsScreenState extends State<TeamsScreen> {
   List<Map<String, dynamic>> _teams = [];
   int _unreadEventCount = 0;
 
-  /// Guard to prevent auto-opening sport selection more than once.
-  bool _autoCreateShown = false;
-
   @override
   void initState() {
     super.initState();
@@ -40,13 +38,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
       if (!mounted) return;
       setState(() => _teams = teams);
 
-      // Auto-open sport selection for fresh users (no teams yet)
-      if (_teams.isEmpty && !_autoCreateShown) {
-        _autoCreateShown = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _createTeamFlow();
-        });
-      }
+      // No auto-open: empty state shows Quick-Start guide with CTA.
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -62,6 +54,130 @@ class _TeamsScreenState extends State<TeamsScreen> {
       if (mounted) setState(() => _unreadEventCount = count);
     } catch (_) {}
   }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Quick-Start Guide
+  // ═══════════════════════════════════════════════════════════
+
+  static const _guideSteps = [
+    'Erstelle dein Team.',
+    'Füge Spieler hinzu (Name + optional Ranking).',
+    'Teile den Einladungslink per WhatsApp über das Teilen-Symbol.',
+    'Teammitglieder öffnen den Link und ordnen sich ihrem Namen zu (✅ Verbunden).',
+    'Als Captain siehst du, wer verbunden ist.',
+    'Erstelle Matches und generiere die Aufstellung – nach Ranking automatisch sortiert.',
+  ];
+
+  /// Builds the numbered guide list (reused in empty state + BottomSheet).
+  Widget _buildGuideContent({bool showTitle = true}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showTitle) ...[
+          Text(
+            'So funktioniert\'s',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+        ],
+        ...List.generate(_guideSteps.length, (i) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: Text(
+                    '${i + 1}.',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    _guideSteps[i],
+                    style: const TextStyle(fontSize: 14, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Card(
+          elevation: 1,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildGuideContent(),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _createTeamFlow,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Team erstellen'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showGuideBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildGuideContent(),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Verstanden'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Navigation
+  // ═══════════════════════════════════════════════════════════
 
   Future<void> _openInbox() async {
     await Navigator.push(
@@ -94,6 +210,11 @@ class _TeamsScreenState extends State<TeamsScreen> {
     final leagueCtrl = TextEditingController(text: '3. Liga Herren');
     final yearCtrl =
         TextEditingController(text: DateTime.now().year.toString());
+
+    // ── Captain "Ich spiele selbst" fields ──
+    final captainNameCtrl = TextEditingController();
+    final rankingCtrl = TextEditingController();
+    bool playsSelf = false;
 
     bool submitting = false;
 
@@ -163,6 +284,57 @@ class _TeamsScreenState extends State<TeamsScreen> {
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'Saison Jahr'),
                 ),
+
+                // ── Captain Name + "Ich spiele selbst" ──
+                const Divider(height: 24),
+                Text(
+                  'Wie heisst du?',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Dein Name, damit dein Team dich erkennt.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: captainNameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Dein Name im Team *',
+                    hintText: 'z.B. Max, Sandro, Martin W.',
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                  maxLength: 30,
+                  onChanged: (_) => setStateDialog(() {}),
+                ),
+                const SizedBox(height: 4),
+                SwitchListTile(
+                  title: const Text('Ich spiele selbst'),
+                  subtitle: const Text(
+                    'Aktiviere dies, wenn du als Captain auch spielst.',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  value: playsSelf,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: submitting
+                      ? null
+                      : (val) => setStateDialog(() => playsSelf = val),
+                ),
+                // Optional ranking field (visible only when toggle is on)
+                if (playsSelf) ...[
+                  const SizedBox(height: 4),
+                  TextField(
+                    controller: rankingCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Meine Rangliste (optional)',
+                      hintText: 'z.B. 7',
+                      prefixText: 'R',
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ],
+
                 if (submitting) ...[
                   const SizedBox(height: 16),
                   const LinearProgressIndicator(),
@@ -182,11 +354,20 @@ class _TeamsScreenState extends State<TeamsScreen> {
                   : () async {
                       final name = nameCtrl.text.trim();
                       final year = int.tryParse(yearCtrl.text.trim());
+                      final captainName = captainNameCtrl.text.trim();
 
                       if (name.isEmpty) {
                         ScaffoldMessenger.of(this.context).showSnackBar(
                           const SnackBar(
                               content: Text('Bitte Team Name eingeben.')),
+                        );
+                        return;
+                      }
+                      if (captainName.length < 2) {
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          const SnackBar(
+                              content: Text(
+                                  'Bitte deinen Namen eingeben (min. 2 Zeichen).')),
                         );
                         return;
                       }
@@ -202,7 +383,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
                       setStateDialog(() => submitting = true);
 
                       try {
-                        await TeamService.createTeam(
+                        // 1) Create team + captain member (is_playing=false)
+                        final teamId = await TeamService.createTeam(
                           name: name,
                           clubName: clubCtrl.text.trim().isEmpty
                               ? null
@@ -212,7 +394,28 @@ class _TeamsScreenState extends State<TeamsScreen> {
                               : leagueCtrl.text.trim(),
                           seasonYear: year,
                           sportKey: sportKey,
+                          captainNickname: captainName,
                         );
+
+                        // 2) If captain plays → create player slot
+                        if (playsSelf) {
+                          try {
+                            final ranking =
+                                int.tryParse(rankingCtrl.text.trim());
+                            await TeamPlayerService.upsertCaptainSlot(
+                              teamId: teamId,
+                              ranking: ranking,
+                            );
+                            // ignore: avoid_print
+                            print('CREATE_TEAM playsSelf=true '
+                                'ranking=$ranking slot created');
+                          } catch (e) {
+                            // Player slot failed but team is created –
+                            // user can toggle later in Team Screen.
+                            // ignore: avoid_print
+                            print('CREATE_TEAM upsertCaptainSlot WARN: $e');
+                          }
+                        }
 
                         if (!mounted) return;
                         Navigator.pop(context, true);
@@ -308,6 +511,11 @@ class _TeamsScreenState extends State<TeamsScreen> {
               );
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'So funktioniert\'s',
+            onPressed: _showGuideBottomSheet,
+          ),
           IconButton(onPressed: () { _load(); _loadUnreadCount(); }, icon: const Icon(Icons.refresh)),
         ],
       ),
@@ -320,7 +528,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
           : _error != null
               ? Center(child: Text('Fehler:\n$_error', textAlign: TextAlign.center))
               : _teams.isEmpty
-                  ? const Center(child: Text('Noch keine Teams. Tippe + um ein Team zu erstellen.'))
+                  ? _buildEmptyState()
                   : ListView.separated(
                       itemCount: _teams.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),

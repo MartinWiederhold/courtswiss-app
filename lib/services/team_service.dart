@@ -27,12 +27,20 @@ class TeamService {
     return (teams as List).cast<Map<String, dynamic>>();
   }
 
-  static Future<void> createTeam({
+  /// Creates a new team and inserts the current user as captain.
+  ///
+  /// [captainNickname] – optional display name for the captain member row.
+  /// The captain is **never** auto-created as a player; set [is_playing]
+  /// explicitly via the "Ich spiele selbst" toggle + upsertCaptainSlot.
+  ///
+  /// Returns the new team's ID.
+  static Future<String> createTeam({
     required String name,
     String? clubName,
     String? league,
     required int seasonYear,
     String? sportKey,
+    String? captainNickname,
   }) async {
     final user = _supabase.auth.currentUser;
     if (user == null) {
@@ -48,7 +56,6 @@ class TeamService {
       if (sportKey != null) 'sport_key': sportKey,
     };
 
-    // Debug: im Console-Log sichtbar
     // ignore: avoid_print
     print('createTeam user.id=${user.id}');
     // ignore: avoid_print
@@ -66,24 +73,32 @@ class TeamService {
     print('createTeam teamId=$teamId, userId=${user.id}');
 
     try {
+      final memberPayload = <String, dynamic>{
+        'team_id': teamId,
+        'user_id': user.id,
+        'role': 'captain',
+        'is_playing': false, // Captain is NOT a player by default
+      };
+      if (captainNickname != null && captainNickname.trim().isNotEmpty) {
+        memberPayload['nickname'] = captainNickname.trim();
+      }
+
       await _supabase.from('cs_team_members').upsert(
-        {
-          'team_id': teamId,
-          'user_id': user.id,
-          'role': 'captain',
-        },
+        memberPayload,
         onConflict: 'team_id,user_id',
       );
       // ignore: avoid_print
-      print('createTeam captain member inserted/upserted OK');
+      print('createTeam captain member inserted/upserted OK '
+          '(is_playing=false, nickname=${captainNickname ?? "null"})');
     } catch (e) {
       // ignore: avoid_print
       print('createTeam member insert FAILED: $e');
-      // Re-throw mit Kontext, damit der UI-Layer den Fehler anzeigen kann
       throw Exception(
         'Team erstellt (id=$teamId), aber Captain-Eintrag fehlgeschlagen: $e',
       );
     }
+
+    return teamId;
   }
 
   /// Delete a team by ID. Only the creator / captain should call this

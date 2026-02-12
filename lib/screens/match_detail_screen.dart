@@ -11,6 +11,10 @@ import '../services/match_service.dart';
 import '../services/lineup_service.dart';
 import '../services/sub_request_service.dart';
 import '../services/team_player_service.dart';
+import '../utils/lineup_reorder.dart';
+import '../utils/lineup_rules.dart';
+import '../utils/sub_request_timeout.dart';
+import '../widgets/lineup_reorder_list.dart';
 import 'create_match_screen.dart';
 
 class MatchDetailScreen extends StatefulWidget {
@@ -49,6 +53,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   List<Map<String, dynamic>> _lineupSlots = [];
   bool _lineupGenerating = false;
   bool _lineupPublishing = false;
+  List<LineupViolation> _lineupViolations = [];
 
   // ── Sub-request state ──
   List<Map<String, dynamic>> _subRequests = [];
@@ -137,6 +142,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           _includeMaybe = (lineup['include_maybe'] as bool?) ?? false;
         }
       });
+      // Recompute rule-violation warnings after fresh data.
+      _recomputeLineupViolations(slots);
     } catch (e) {
       debugPrint('Lineup reload error: $e');
     }
@@ -254,7 +261,31 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         .any((m) => m['user_id'] == uid && m['role'] == 'captain');
   }
 
+  /// Central gate for Drag & Drop reorder.
+  /// True only when ALL of these hold:
+  ///  - data loaded (not in initial load)
+  ///  - lineup exists with slots
+  ///  - lineup status is 'draft' (NOT published / locked)
+  ///  - user is captain
+  ///  - no generate or publish operation in flight
+  bool get _canReorderLineup =>
+      !_loading &&
+      _lineupSlots.isNotEmpty &&
+      _lineup?['status'] == 'draft' &&
+      _isAdmin &&
+      !_lineupGenerating &&
+      !_lineupPublishing;
+
+  /// Guard: prevents parallel _load() calls (e.g. rapid refreshes,
+  /// sub-request response + automatic reload overlapping).
+  bool _loadInProgress = false;
+
   Future<void> _load() async {
+    if (_loadInProgress) {
+      debugPrint('MATCH_DETAIL _load skipped (already in progress)');
+      return;
+    }
+    _loadInProgress = true;
     setState(() => _loading = true);
     try {
       // 1. Availability
@@ -328,9 +359,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       }
 
       // 6. Sub requests
+      //    No cron available → expire stale requests on every load.
+      //    expireStale() is idempotent and swallows errors internally,
+      //    so it won't block the rest of the load sequence.
       List<Map<String, dynamic>> subRequests = [];
       List<Map<String, dynamic>> myPendingSubRequests = [];
       try {
+        await SubRequestService.expireStale();
         subRequests = await SubRequestService.listForMatch(widget.matchId);
         myPendingSubRequests =
             await SubRequestService.listMyPendingRequests();
@@ -356,6 +391,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         _loading = false;
       });
 
+      // Recompute rule-violation warnings after initial load.
+      _recomputeLineupViolations(lineupSlots);
+
       // Load carpool offers (non-blocking, separate from main data)
       _reloadCarpool();
 
@@ -373,6 +411,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Fehler: $e')),
       );
+    } finally {
+      _loadInProgress = false;
     }
   }
 
@@ -707,22 +747,58 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  Lineup: Drag & Drop reorder
+  //  Lineup: Drag & Drop reorder (via LineupReorderList widget)
   // ═══════════════════════════════════════════════════════════
 
-  Future<void> _onReorder(int oldIndex, int newIndex) async {
-    if (oldIndex < newIndex) newIndex -= 1;
-    if (oldIndex == newIndex) return;
-
-    final ordered = _orderedSlots;
-    if (oldIndex < 0 || oldIndex >= ordered.length ||
-        newIndex < 0 || newIndex >= ordered.length) {
+  /// Called by [LineupReorderList] to persist a drag & drop reorder.
+  ///
+  /// **Error contract**: completes normally on success; THROWS on failure.
+  /// The widget catches the exception and rolls back the optimistic UI.
+  /// No additional setState here — the widget is responsible for UI state.
+  Future<void> _onPersistReorder(
+    List<Map<String, dynamic>> reorderedSlots,
+    MoveStep step,
+  ) async {
+    // ── Defensive gate: if state changed between drag-start and
+    //    persist (e.g. lineup was published in the meantime), bail
+    //    out silently — the widget will keep its optimistic state
+    //    until the next parent rebuild refreshes the list.
+    if (!_canReorderLineup) {
+      debugPrint('LINEUP_REORDER skip: canReorder=false '
+          '(state changed during drag)');
       return;
     }
 
-    final from = ordered[oldIndex];
-    final to = ordered[newIndex];
-    await _swapSlots(from, to);
+    // Single await — exception propagates to widget for rollback.
+    await LineupService.reorderLineup(
+      matchId: widget.matchId,
+      fromType: step.fromType,
+      fromPos: step.fromPos,
+      toType: step.toType,
+      toPos: step.toPos,
+    );
+
+    // Server state is source of truth — reload to sync optimistic UI
+    // (for adjacent swaps optimistic == server; for multi-position drags
+    // the reload corrects any shift-vs-swap discrepancy).
+    if (mounted) await _reloadLineup();
+  }
+
+  /// Called after a successful reorder – recompute rule-violation warnings.
+  void _onReorderComplete(List<Map<String, dynamic>> newOrder) {
+    debugPrint('LINEUP_REORDER_COMPLETE: ${newOrder.length} slots');
+    _recomputeLineupViolations(newOrder);
+  }
+
+  /// (Re-)compute lineup rule violations from [slots].
+  /// Can be called with server-fresh or optimistic slots.
+  void _recomputeLineupViolations([List<Map<String, dynamic>>? slots]) {
+    final source = slots ?? _lineupSlots;
+    final ordered = LineupService.buildOrderedSlots(source);
+    final vs = detectLineupViolations(ordered);
+    if (mounted) {
+      setState(() => _lineupViolations = vs);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1329,6 +1405,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               const SizedBox(height: 12),
             ],
 
+            // ── Rule-violation warning banner (captain only) ──
+            if (_isAdmin && _lineupViolations.isNotEmpty) ...[
+              _buildViolationBanner(),
+              const SizedBox(height: 12),
+            ],
+
             // ── Slot list (drag & drop for admin draft, static otherwise) ──
             if (_isAdmin && isDraft) ...[
               _buildReorderableSlots(
@@ -1399,6 +1481,87 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           ],
         ],
       ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Rule-violation warning banner
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildViolationBanner() {
+    final count = _lineupViolations.length;
+    final title = count == 1
+        ? '⚠️ 1 Regelverstoss erkannt'
+        : '⚠️ $count Regelverstösse erkannt';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.shade400),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  color: Colors.amber.shade800, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Colors.amber.shade900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ...(_lineupViolations.length <= 5
+                  ? _lineupViolations
+                  : _lineupViolations.take(5))
+              .map((v) => Padding(
+                    padding: const EdgeInsets.only(left: 28, bottom: 2),
+                    child: Text(
+                      '• ${v.message}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.amber.shade900,
+                      ),
+                    ),
+                  )),
+          if (_lineupViolations.length > 5)
+            Padding(
+              padding: const EdgeInsets.only(left: 28, top: 2),
+              child: Text(
+                '… und ${_lineupViolations.length - 5} weitere',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.amber.shade700,
+                ),
+              ),
+            ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 28),
+            child: Text(
+              'Veröffentlichung trotzdem möglich.',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.amber.shade700,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1509,12 +1672,61 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     );
   }
 
+  // (Old _buildDraggableSlotTile removed – replaced by
+  //  LineupReorderList + _buildReorderSlotContent above.)
+
   // ═══════════════════════════════════════════════════════════
-  //  Draggable slot tile (Drag & Drop – admin draft only)
+  //  Reorderable slots list (admin + draft) – uses LineupReorderList
   // ═══════════════════════════════════════════════════════════
 
-  Widget _buildDraggableSlotTile(
-      Map<String, dynamic> slot, int index, int totalCount) {
+  Widget _buildReorderableSlots(
+      List<Map<String, dynamic>> ordered,
+      int starterCount,
+      int reserveCount) {
+    final lineupStatus = _lineup?['status'] as String?;
+    final isPublished = lineupStatus == 'published';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        LineupReorderList(
+          items: ordered,
+          starterCount: starterCount,
+          canReorder: _canReorderLineup,
+          onPersistReorder: _onPersistReorder,
+          onReorderComplete: _onReorderComplete,
+          itemBuilder: (context, slot, index) {
+            return _buildReorderSlotContent(slot, index);
+          },
+        ),
+
+        // ── Hint when captain sees lineup but can't reorder ──
+        if (_isAdmin && !_canReorderLineup && _lineupSlots.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            isPublished
+                ? 'Aufstellung ist veröffentlicht – Reihenfolge kann nicht '
+                    'mehr geändert werden.'
+                : _lineupGenerating
+                    ? 'Aufstellung wird generiert …'
+                    : _lineupPublishing
+                        ? 'Aufstellung wird veröffentlicht …'
+                        : 'Reihenfolge ändern ist momentan nicht möglich.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Builds the content of a single slot tile inside the reorderable list.
+  /// Separated from the drag handle which is managed by [LineupReorderList].
+  Widget _buildReorderSlotContent(Map<String, dynamic> slot, int index) {
     final pos = slot['position'] as int;
     final slotType = slot['slot_type'] as String;
     final userId = slot['user_id'] as String?;
@@ -1522,105 +1734,44 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final avail = userId != null ? _availStatusForUser(userId) : '–';
     final posColor = slotType == 'starter' ? Colors.blue : Colors.orange;
 
-    return Material(
-      key: ValueKey(slot['id'] as String),
-      child: ListTile(
-        dense: true,
-        leading: CircleAvatar(
-          radius: 14,
-          backgroundColor: posColor.withValues(alpha: 0.15),
-          child: Text(
-            '$pos',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: posColor,
-            ),
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.only(right: 12),
+      leading: CircleAvatar(
+        radius: 14,
+        backgroundColor: posColor.withValues(alpha: 0.15),
+        child: Text(
+          '$pos',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: posColor,
           ),
         ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                _slotUserName(slot),
-                style: TextStyle(
-                  fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (userId != null) ...[
-              const SizedBox(width: 4),
-              _availChip(avail),
-            ],
-          ],
-        ),
-        subtitle: isMe
-            ? Text(
-                slotType == 'starter' ? 'Du · Starter' : 'Du · Ersatz',
-                style: const TextStyle(fontSize: 11, color: Colors.blue),
-              )
-            : null,
-        trailing: ReorderableDragStartListener(
-          index: index,
-          child: const Icon(Icons.drag_handle, color: Colors.grey),
-        ),
       ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  //  Reorderable slots list (admin + draft)
-  // ═══════════════════════════════════════════════════════════
-
-  Widget _buildReorderableSlots(
-      List<Map<String, dynamic>> ordered,
-      int starterCount,
-      int reserveCount) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Text('Starter ($starterCount)',
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-            if (reserveCount > 0) ...[
-              const SizedBox(width: 12),
-              Text('· Ersatz ($reserveCount)',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade700)),
-            ],
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _slotUserName(slot),
+              style: TextStyle(
+                fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (userId != null) ...[
+            const SizedBox(width: 4),
+            _availChip(avail),
           ],
-        ),
-        const SizedBox(height: 2),
-        Text('Halte ☰ und ziehe um Positionen zu tauschen',
-            style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey.shade600,
-                fontStyle: FontStyle.italic)),
-        const SizedBox(height: 8),
-        ReorderableListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          buildDefaultDragHandles: false,
-          itemCount: ordered.length,
-          onReorder: _onReorder,
-          proxyDecorator: (child, index, animation) {
-            return Material(
-              elevation: 4,
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              child: child,
-            );
-          },
-          itemBuilder: (context, index) {
-            return _buildDraggableSlotTile(
-                ordered[index], index, ordered.length);
-          },
-        ),
-      ],
+        ],
+      ),
+      subtitle: isMe
+          ? Text(
+              slotType == 'starter' ? 'Du · Starter' : 'Du · Ersatz',
+              style: const TextStyle(fontSize: 11, color: Colors.blue),
+            )
+          : null,
     );
   }
 
@@ -2792,33 +2943,51 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           ..._myPendingSubRequests.map((req) {
             final originalId = req['original_user_id'] as String? ?? '';
             final originalName = _playerNameForUserId(originalId);
+            final actionable = isRequestActionable(req);
+            final expiryLabel = expiresInLabel(req);
+
             return Card(
-              color: Colors.orange.shade50,
+              color: actionable
+                  ? Colors.orange.shade50
+                  : Colors.grey.shade100,
               child: ListTile(
-                leading:
-                    const Icon(Icons.swap_horiz, color: Colors.orange),
-                title: Text('Ersatz für $originalName'),
-                subtitle: const Text('Kannst du einspringen?'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.check_circle,
-                          color: Colors.green, size: 32),
-                      tooltip: 'Annehmen',
-                      onPressed: () => _respondSubRequest(
-                          req['id'] as String, 'accepted'),
-                    ),
-                    const SizedBox(width: 4),
-                    IconButton(
-                      icon: const Icon(Icons.cancel,
-                          color: Colors.red, size: 32),
-                      tooltip: 'Ablehnen',
-                      onPressed: () => _respondSubRequest(
-                          req['id'] as String, 'declined'),
-                    ),
-                  ],
+                leading: Icon(
+                  actionable ? Icons.swap_horiz : Icons.timer_off,
+                  color: actionable ? Colors.orange : Colors.grey,
                 ),
+                title: Text('Ersatz für $originalName'),
+                subtitle: Text(
+                  actionable
+                      ? 'Kannst du einspringen?'
+                          '${expiryLabel != null ? ' ($expiryLabel)' : ''}'
+                      : 'Anfrage abgelaufen',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: actionable ? null : Colors.grey,
+                  ),
+                ),
+                trailing: actionable
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.check_circle,
+                                color: Colors.green, size: 32),
+                            tooltip: 'Annehmen',
+                            onPressed: () => _respondSubRequest(
+                                req['id'] as String, 'accepted'),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(Icons.cancel,
+                                color: Colors.red, size: 32),
+                            tooltip: 'Ablehnen',
+                            onPressed: () => _respondSubRequest(
+                                req['id'] as String, 'declined'),
+                          ),
+                        ],
+                      )
+                    : const Icon(Icons.block, color: Colors.grey, size: 24),
               ),
             );
           }),
@@ -2836,26 +3005,43 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 _playerNameForUserId(req['original_user_id'] as String? ?? '');
             final subName = _playerNameForUserId(
                 req['substitute_user_id'] as String? ?? '');
-            final icon = switch (status) {
+
+            // Client-side: treat timed-out pending as expired visually
+            final effectivelyExpired =
+                status == 'pending' && isRequestExpired(req);
+            final displayStatus = effectivelyExpired ? 'expired' : status;
+
+            final icon = switch (displayStatus) {
               'pending' => Icons.hourglass_top,
               'accepted' => Icons.check_circle,
               'declined' => Icons.cancel,
               'expired' => Icons.timer_off,
               _ => Icons.help_outline,
             };
-            final color = switch (status) {
+            final color = switch (displayStatus) {
               'pending' => Colors.orange,
               'accepted' => Colors.green,
               'declined' => Colors.red,
               'expired' => Colors.grey,
               _ => Colors.grey,
             };
+
+            // Show remaining time for pending requests
+            final expiryHint = (displayStatus == 'pending')
+                ? expiresInLabel(req)
+                : null;
+
             return ListTile(
               dense: true,
               leading: Icon(icon, color: color, size: 20),
               title: Text('$subName für $originalName'),
+              subtitle: expiryHint != null
+                  ? Text(expiryHint,
+                      style: TextStyle(
+                          fontSize: 11, color: Colors.orange.shade700))
+                  : null,
               trailing: Chip(
-                label: Text(status,
+                label: Text(displayStatus,
                     style: const TextStyle(fontSize: 11)),
                 backgroundColor: color.withValues(alpha: 0.15),
                 padding: EdgeInsets.zero,
