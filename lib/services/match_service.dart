@@ -77,6 +77,9 @@ class MatchService {
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) throw Exception('Not authenticated');
 
+    // ignore: avoid_print
+    print('SET_AVAILABILITY userId=$uid matchId=$matchId status=$status');
+
     await _supabase.from('cs_match_availability').upsert(
       {
         'match_id': matchId,

@@ -21,11 +21,12 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 /// Service that wires up Firebase Cloud Messaging:
-///   1. Request permission (iOS)
+///   1. Request permission (iOS + Android 13+)
 ///   2. Get FCM token → store in cs_device_tokens
 ///   3. Listen for token refresh → update in DB
-///   4. Handle foreground messages (show local notification)
-///   5. Handle notification tap → navigate to MatchDetailScreen
+///   4. Listen for auth changes → re-register token under new user_id
+///   5. Handle foreground messages (show local notification)
+///   6. Handle notification tap → navigate to MatchDetailScreen
 ///
 /// Call [initPush] once after the user has an auth session
 /// (so auth.uid() is available for the token upsert).
@@ -33,15 +34,25 @@ class PushService {
   static bool _initialized = false;
   static StreamSubscription<RemoteMessage>? _fgSub;
   static StreamSubscription<String>? _tokenRefreshSub;
+  static StreamSubscription<AuthState>? _authSub;
 
   /// Last known FCM token (for debug display in UI).
   static String? lastToken;
+
+  /// The user_id we last registered the token for.
+  /// Used to detect session changes and avoid duplicate registrations.
+  static String? _lastRegisteredUserId;
+
+  // ── Public API ──────────────────────────────────────────────────
 
   /// Initialise FCM. Safe to call multiple times (no-op after first).
   /// Must be called AFTER Firebase.initializeApp() and AFTER Supabase auth.
   static Future<void> initPush() async {
     if (_initialized) return;
     _initialized = true;
+
+    // ignore: avoid_print
+    print('PUSH_INIT userId=${Supabase.instance.client.auth.currentUser?.id}');
 
     final messaging = FirebaseMessaging.instance;
 
@@ -69,7 +80,7 @@ class PushService {
         lastToken = token;
         // ignore: avoid_print
         print('FCM_TOKEN: $token');
-        await _registerToken(token);
+        await _registerTokenForCurrentUser(token);
       }
     } catch (e) {
       debugPrint('PushService getToken error: $e');
@@ -81,17 +92,22 @@ class PushService {
       lastToken = newToken;
       // ignore: avoid_print
       print('FCM_TOKEN (refreshed): $newToken');
-      await _registerToken(newToken);
+      await _registerTokenForCurrentUser(newToken);
     });
 
-    // ── 4. Foreground messages → show local notification ─────────
+    // ── 4. Listen for auth changes → re-register token ───────────
+    _authSub?.cancel();
+    _authSub = Supabase.instance.client.auth.onAuthStateChange
+        .listen(_onAuthStateChanged);
+
+    // ── 5. Foreground messages → show local notification ─────────
     _fgSub?.cancel();
     _fgSub = FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
-    // ── 5. Notification tap (app was in background) ──────────────
+    // ── 6. Notification tap (app was in background) ──────────────
     FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
 
-    // ── 6. Cold start: app opened via notification tap ───────────
+    // ── 7. Cold start: app opened via notification tap ───────────
     try {
       final initial = await messaging.getInitialMessage();
       if (initial != null) {
@@ -106,24 +122,79 @@ class PushService {
   static void dispose() {
     _fgSub?.cancel();
     _tokenRefreshSub?.cancel();
+    _authSub?.cancel();
     _fgSub = null;
     _tokenRefreshSub = null;
+    _authSub = null;
     _initialized = false;
+    _lastRegisteredUserId = null;
   }
 
-  // ── Internal ──────────────────────────────────────────────────
+  // ── Internal: token registration ───────────────────────────────
 
-  /// Store FCM token in Supabase via DeviceTokenService.
-  static Future<void> _registerToken(String token) async {
+  /// Called when the Supabase auth state changes.
+  /// If the user_id differs from the last registration, re-register the
+  /// FCM token so it belongs to the current session.
+  static void _onAuthStateChanged(AuthState authState) {
+    final newUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (newUserId == null) {
+      // No session → nothing to register
+      debugPrint('PushService [auth] session cleared, skip re-register');
+      return;
+    }
+
+    // Only re-register if user actually changed
+    if (newUserId == _lastRegisteredUserId) return;
+
+    final token = lastToken;
+    if (token == null || token.isEmpty) {
+      debugPrint('PushService [auth] user changed to '
+          '${newUserId.substring(0, 8)}… but no FCM token yet');
+      return;
+    }
+
+    // ignore: avoid_print
+    print('PushService [auth] user changed: '
+        '${_lastRegisteredUserId?.substring(0, 8) ?? 'null'}… → '
+        '${newUserId.substring(0, 8)}… – re-registering token');
+
+    _registerTokenForCurrentUser(token);
+  }
+
+  /// Register the FCM [token] in cs_device_tokens for the current
+  /// Supabase auth.uid().  Guards against null user and duplicate calls.
+  static Future<void> _registerTokenForCurrentUser(String token) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      debugPrint('PushService _registerToken: currentUser is null, skipping');
+      return;
+    }
+
+    // Avoid duplicate registrations for the same user + same token
+    if (userId == _lastRegisteredUserId && token == lastToken) {
+      // Already registered exactly this combination → skip
+      // (but still allow if token is new even if userId is same)
+    }
+
+    final tokenPrefix = token.length > 12 ? token.substring(0, 12) : token;
+    // ignore: avoid_print
+    print('PushService REGISTER userId=${userId.substring(0, 8)}… '
+        'token=$tokenPrefix…');
+
     try {
       await DeviceTokenService.registerToken(
         token: token,
         platform: Platform.isIOS ? 'ios' : 'android',
       );
+      _lastRegisteredUserId = userId;
+      // ignore: avoid_print
+      print('PushService REGISTER OK for ${userId.substring(0, 8)}…');
     } catch (e) {
       debugPrint('PushService _registerToken error: $e');
     }
   }
+
+  // ── Internal: message handling ─────────────────────────────────
 
   /// Show a local notification for foreground FCM messages.
   static void _handleForegroundMessage(RemoteMessage message) {

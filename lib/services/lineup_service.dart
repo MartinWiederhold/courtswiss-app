@@ -137,6 +137,8 @@ class LineupService {
 
   /// Publish the lineup and notify all team members (via RPC).
   static Future<Map<String, dynamic>> publishLineup(String matchId) async {
+    // ignore: avoid_print
+    print('PUBLISH_LINEUP userId=${_supabase.auth.currentUser?.id} matchId=$matchId');
     final result = await _supabase.rpc('publish_lineup', params: {
       'p_match_id': matchId,
     });

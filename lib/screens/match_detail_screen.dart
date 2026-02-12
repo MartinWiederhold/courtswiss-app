@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/carpool_offer.dart';
+import '../models/dinner_rsvp.dart';
+import '../models/expense.dart';
+import '../services/avatar_service.dart';
+import '../services/carpool_service.dart';
+import '../services/dinner_service.dart';
+import '../services/expense_service.dart';
 import '../services/match_service.dart';
 import '../services/lineup_service.dart';
+import '../services/sub_request_service.dart';
 import '../services/team_player_service.dart';
 import 'create_match_screen.dart';
 
@@ -33,11 +41,30 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   // ── Player slots (for name/ranking resolution) ──
   Map<String, Map<String, dynamic>> _claimedMap = {};
 
+  // ── Avatar resolution ──
+  Map<String, String> _avatarUrls = {};
+
   // ── Lineup state ──
   Map<String, dynamic>? _lineup; // cs_match_lineups row (or null)
   List<Map<String, dynamic>> _lineupSlots = [];
   bool _lineupGenerating = false;
   bool _lineupPublishing = false;
+
+  // ── Sub-request state ──
+  List<Map<String, dynamic>> _subRequests = [];
+  List<Map<String, dynamic>> _myPendingSubRequests = [];
+
+  // ── Carpool state ──
+  List<CarpoolOffer> _carpoolOffers = [];
+  RealtimeChannel? _carpoolOffersChannel;
+  RealtimeChannel? _carpoolPassengersChannel;
+
+  // ── Dinner RSVP state ──
+  List<DinnerRsvp> _dinnerRsvps = [];
+  String? _myDinnerStatus; // 'yes' | 'no' | 'maybe' | null
+
+  // ── Expenses state ──
+  List<Expense> _expenses = [];
 
   // ── Realtime subscription for lineup changes ──
   RealtimeChannel? _lineupChannel;
@@ -56,11 +83,14 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     _match = Map.of(widget.match);
     _load();
     _subscribeLineupChanges();
+    _subscribeCarpoolChanges();
   }
 
   @override
   void dispose() {
     _lineupChannel?.unsubscribe();
+    _carpoolOffersChannel?.unsubscribe();
+    _carpoolPassengersChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -113,6 +143,107 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  Realtime: carpool (offers + passengers)
+  // ═══════════════════════════════════════════════════════════
+
+  void _subscribeCarpoolChanges() {
+    // Channel 1: cs_carpool_offers changes (create/update/delete offer)
+    _carpoolOffersChannel = _supabase
+        .channel('carpool_offers:${widget.matchId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'cs_carpool_offers',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'match_id',
+            value: widget.matchId,
+          ),
+          callback: (_) {
+            debugPrint('CARPOOL_RT: offer change, reloading…');
+            _reloadCarpool();
+          },
+        )
+        .subscribe();
+
+    // Channel 2: cs_carpool_passengers changes (join/leave)
+    // No match_id filter possible here, so we listen to all changes
+    // and re-fetch (cheap — only rows for this match).
+    _carpoolPassengersChannel = _supabase
+        .channel('carpool_passengers:${widget.matchId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'cs_carpool_passengers',
+          callback: (_) {
+            debugPrint('CARPOOL_RT: passenger change, reloading…');
+            _reloadCarpool();
+          },
+        )
+        .subscribe();
+  }
+
+  /// Reload carpool offers (with passengers) and update state.
+  ///
+  /// When [rethrow_] is true the error is re-thrown after logging so the
+  /// caller (e.g. create-flow) can show a meaningful message.
+  /// Background / realtime callers leave it false (default).
+  Future<void> _reloadCarpool({bool rethrow_ = false}) async {
+    final uid = _supabase.auth.currentUser?.id;
+    debugPrint('CARPOOL_LOAD: matchId=${widget.matchId} uid=$uid');
+    try {
+      final fullRows = await CarpoolService.listOffers(widget.matchId);
+      debugPrint('CARPOOL_LOAD: ${fullRows.length} offers returned');
+      if (!mounted) return;
+      setState(() {
+        _carpoolOffers = CarpoolService.parseOffers(
+          fullRows,
+          claimedMap: _claimedMap,
+          profiles: _profiles,
+        );
+      });
+    } catch (e) {
+      debugPrint('CARPOOL_LOAD ERROR: $e');
+      if (rethrow_) rethrow;
+    }
+  }
+
+  /// Reload dinner RSVPs and update state.
+  Future<void> _reloadDinner() async {
+    try {
+      final rsvps = await DinnerService.getRsvps(widget.matchId);
+      if (!mounted) return;
+      final uid = _supabase.auth.currentUser?.id;
+      String? myStatus;
+      for (final r in rsvps) {
+        if (r.userId == uid) {
+          myStatus = r.status;
+          break;
+        }
+      }
+      setState(() {
+        _dinnerRsvps = rsvps;
+        _myDinnerStatus = myStatus;
+      });
+    } catch (e) {
+      debugPrint('DINNER_LOAD ERROR: $e');
+    }
+  }
+
+  /// Reload expenses and update state.
+  Future<void> _reloadExpenses() async {
+    try {
+      final expenses = await ExpenseService.listExpenses(widget.matchId);
+      if (!mounted) return;
+      setState(() {
+        _expenses = expenses;
+      });
+    } catch (e) {
+      debugPrint('EXPENSE_LOAD ERROR: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  Data loading
   // ═══════════════════════════════════════════════════════════
 
@@ -137,7 +268,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             .from('cs_team_members')
             .select(
                 'user_id, role, nickname, is_playing, ranking, '
-                'cs_app_profiles(display_name, email)')
+                'cs_app_profiles(display_name, email, avatar_path)')
             .eq('team_id', widget.teamId)
             .order('created_at', ascending: true);
         members = List<Map<String, dynamic>>.from(rows);
@@ -155,7 +286,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         if (uids.isNotEmpty) {
           final pRows = await _supabase
               .from('cs_app_profiles')
-              .select('user_id, display_name, email')
+              .select('user_id, display_name, email, avatar_path')
               .inFilter('user_id', uids);
           for (final p in List<Map<String, dynamic>>.from(pRows)) {
             profileMap[p['user_id'] as String] = p;
@@ -196,6 +327,21 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         debugPrint('Lineup load error: $e');
       }
 
+      // 6. Sub requests
+      List<Map<String, dynamic>> subRequests = [];
+      List<Map<String, dynamic>> myPendingSubRequests = [];
+      try {
+        subRequests = await SubRequestService.listForMatch(widget.matchId);
+        myPendingSubRequests =
+            await SubRequestService.listMyPendingRequests();
+        // Filter to this match only
+        myPendingSubRequests = myPendingSubRequests
+            .where((r) => r['match_id'] == widget.matchId)
+            .toList();
+      } catch (e) {
+        debugPrint('Sub requests load error: $e');
+      }
+
       if (!mounted) return;
       setState(() {
         _availability = avail;
@@ -205,8 +351,22 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         _myStatus = myStatus;
         _lineup = lineup;
         _lineupSlots = lineupSlots;
+        _subRequests = subRequests;
+        _myPendingSubRequests = myPendingSubRequests;
         _loading = false;
       });
+
+      // Load carpool offers (non-blocking, separate from main data)
+      _reloadCarpool();
+
+      // Load dinner RSVPs (non-blocking)
+      _reloadDinner();
+
+      // Load expenses (non-blocking)
+      _reloadExpenses();
+
+      // Resolve avatars asynchronously (non-blocking)
+      _resolveAvatarUrls();
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -214,6 +374,137 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         SnackBar(content: Text('Fehler: $e')),
       );
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Avatar resolution
+  // ═══════════════════════════════════════════════════════════
+
+  /// Collects all user IDs from members + claimed players, fetches their
+  /// avatar_path from cs_app_profiles, and batch-resolves signed URLs.
+  Future<void> _resolveAvatarUrls() async {
+    // 1. Collect all user IDs
+    final allUserIds = <String>{};
+    for (final m in _members) {
+      final uid = m['user_id'] as String?;
+      if (uid != null) allUserIds.add(uid);
+    }
+    for (final entry in _claimedMap.entries) {
+      allUserIds.add(entry.key);
+    }
+
+    if (allUserIds.isEmpty) {
+      if (mounted) setState(() => _avatarUrls = {});
+      return;
+    }
+
+    try {
+      // 2. Batch-fetch avatar_path from profiles
+      final profileRows = await _supabase
+          .from('cs_app_profiles')
+          .select('user_id, avatar_path')
+          .inFilter('user_id', allUserIds.toList());
+
+      final pathsByUid = <String, String>{};
+      for (final row in List<Map<String, dynamic>>.from(profileRows)) {
+        final uid = row['user_id'] as String?;
+        final path = row['avatar_path'] as String?;
+        if (uid != null && path != null && path.isNotEmpty) {
+          pathsByUid[uid] = path;
+        }
+      }
+
+      if (pathsByUid.isEmpty) {
+        if (mounted) setState(() => _avatarUrls = {});
+        return;
+      }
+
+      // 3. Batch-resolve signed URLs
+      final uniquePaths = pathsByUid.values.toSet().toList();
+      final signedMap = await AvatarService.createSignedUrls(uniquePaths);
+
+      final result = <String, String>{};
+      for (final entry in pathsByUid.entries) {
+        final signed = signedMap[entry.value];
+        if (signed != null) result[entry.key] = signed;
+      }
+
+      if (mounted) setState(() => _avatarUrls = result);
+    } catch (e) {
+      debugPrint('Avatar resolve error: $e');
+    }
+  }
+
+  /// Get signed avatar URL for a user, or null.
+  String? _avatarUrlForUser(String userId) => _avatarUrls[userId];
+
+  /// Build initials from display name (e.g. "Max Muster" → "MM").
+  String _initialsForUser(String userId) {
+    // 1. Try claimed player slot
+    final claimed = _claimedMap[userId];
+    if (claimed != null) {
+      final f = (claimed['first_name'] as String? ?? '');
+      final l = (claimed['last_name'] as String? ?? '');
+      if (f.isNotEmpty && l.isNotEmpty) {
+        return '${f[0]}${l[0]}'.toUpperCase();
+      }
+      if (f.isNotEmpty) return f[0].toUpperCase();
+    }
+    // 2. Try profile display_name
+    final profile = _profiles[userId];
+    if (profile != null) {
+      final name = profile['display_name'] as String? ?? '';
+      if (name.isNotEmpty && name != 'Spieler') {
+        final parts = name.trim().split(' ');
+        if (parts.length >= 2) {
+          return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+        }
+        return name[0].toUpperCase();
+      }
+    }
+    // 3. Try member name resolution
+    final member =
+        _members.where((m) => m['user_id'] == userId).firstOrNull;
+    if (member != null) {
+      final nick = member['nickname'] as String?;
+      if (nick != null && nick.isNotEmpty) return nick[0].toUpperCase();
+      final embedded = member['cs_app_profiles'];
+      if (embedded is Map<String, dynamic>) {
+        final dn = embedded['display_name'] as String?;
+        if (dn != null && dn.isNotEmpty && dn != 'Spieler') {
+          return dn[0].toUpperCase();
+        }
+      }
+    }
+    return '?';
+  }
+
+  /// Build a CircleAvatar for a user: signed image or initials fallback.
+  Widget _userAvatar(String userId, {double radius = 16}) {
+    final url = _avatarUrlForUser(userId);
+    final initials = _initialsForUser(userId);
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Colors.grey.shade200,
+      backgroundImage: url != null ? NetworkImage(url) : null,
+      onBackgroundImageError: url != null
+          ? (e, s) {
+              // Silently handle broken image
+              setState(() => _avatarUrls.remove(userId));
+            }
+          : null,
+      child: url == null
+          ? Text(
+              initials,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: radius * 0.75,
+                color: Colors.grey.shade700,
+              ),
+            )
+          : null,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -416,6 +707,25 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  Lineup: Drag & Drop reorder
+  // ═══════════════════════════════════════════════════════════
+
+  Future<void> _onReorder(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) newIndex -= 1;
+    if (oldIndex == newIndex) return;
+
+    final ordered = _orderedSlots;
+    if (oldIndex < 0 || oldIndex >= ordered.length ||
+        newIndex < 0 || newIndex >= ordered.length) {
+      return;
+    }
+
+    final from = ordered[oldIndex];
+    final to = ordered[newIndex];
+    await _swapSlots(from, to);
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  Lineup: Lock / Unlock slot
   // ═══════════════════════════════════════════════════════════
 
@@ -486,6 +796,76 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       );
     } finally {
       if (mounted) setState(() => _lineupPublishing = false);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Sub-request actions
+  // ═══════════════════════════════════════════════════════════
+
+  /// Captain creates a sub request for an absent starter.
+  Future<void> _createSubRequest(String originalUserId) async {
+    try {
+      final result = await SubRequestService.createRequest(
+        matchId: widget.matchId,
+        originalUserId: originalUserId,
+      );
+      if (!mounted) return;
+      final success = result['success'] == true;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Ersatzanfrage an ${result['substitute_name']} gesendet ✅'),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] as String? ??
+                'Kein Ersatzspieler gefunden'),
+          ),
+        );
+      }
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: $e')),
+      );
+    }
+  }
+
+  /// Substitute responds to a pending request.
+  Future<void> _respondSubRequest(String requestId, String response) async {
+    try {
+      final result = await SubRequestService.respond(
+        requestId: requestId,
+        response: response,
+      );
+      if (!mounted) return;
+      final success = result['success'] == true;
+      if (success) {
+        final msg = response == 'accepted'
+            ? 'Ersatz bestätigt ✅'
+            : 'Ersatzanfrage abgelehnt';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text(result['message'] as String? ?? 'Fehler aufgetreten'),
+          ),
+        );
+      }
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: $e')),
+      );
     }
   }
 
@@ -783,6 +1163,36 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 // ═════════════════════════════════════════
                 _buildLineupSection(lineupStatus),
 
+                // ═════════════════════════════════════════
+                // ── SUB REQUESTS ──────────────────────
+                // ═════════════════════════════════════════
+                if (_myPendingSubRequests.isNotEmpty ||
+                    _subRequests.isNotEmpty) ...[
+                  const Divider(height: 36),
+                  _buildSubRequestSection(),
+                ],
+
+                const Divider(height: 36),
+
+                // ═════════════════════════════════════════
+                // ── CARPOOL ────────────────────────────
+                // ═════════════════════════════════════════
+                _buildCarpoolSection(),
+
+                const Divider(height: 36),
+
+                // ═════════════════════════════════════════
+                // ── DINNER RSVP ──────────────────────────
+                // ═════════════════════════════════════════
+                _buildDinnerSection(),
+
+                const Divider(height: 36),
+
+                // ═════════════════════════════════════════
+                // ── EXPENSES / SPESEN ────────────────────
+                // ═════════════════════════════════════════
+                _buildExpensesSection(),
+
                 const Divider(height: 36),
 
                 // ── Player availability list ────────────
@@ -919,27 +1329,29 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               const SizedBox(height: 12),
             ],
 
-            // ── Starters ──
-            Text('Starter (${starters.length})',
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            ...List.generate(starters.length, (i) {
-              final linearIdx = i; // starters are first
-              return _buildSlotTile(
-                  starters[i], linearIdx, ordered.length);
-            }),
-
-            if (reserves.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text('Ersatz (${reserves.length})',
-                  style:
-                      const TextStyle(fontWeight: FontWeight.bold)),
+            // ── Slot list (drag & drop for admin draft, static otherwise) ──
+            if (_isAdmin && isDraft) ...[
+              _buildReorderableSlots(
+                  ordered, starters.length, reserves.length),
+            ] else ...[
+              Text('Starter (${starters.length})',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
-              ...List.generate(reserves.length, (j) {
-                final linearIdx = starters.length + j;
-                return _buildSlotTile(
-                    reserves[j], linearIdx, ordered.length);
+              ...List.generate(starters.length, (i) {
+                return _buildSlotTile(starters[i], i, ordered.length);
               }),
+              if (reserves.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text('Ersatz (${reserves.length})',
+                    style:
+                        const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                ...List.generate(reserves.length, (j) {
+                  final linearIdx = starters.length + j;
+                  return _buildSlotTile(
+                      reserves[j], linearIdx, ordered.length);
+                }),
+              ],
             ],
 
             // ── Publish button (only for admin in draft state) ──
@@ -1098,6 +1510,1398 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  Draggable slot tile (Drag & Drop – admin draft only)
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildDraggableSlotTile(
+      Map<String, dynamic> slot, int index, int totalCount) {
+    final pos = slot['position'] as int;
+    final slotType = slot['slot_type'] as String;
+    final userId = slot['user_id'] as String?;
+    final isMe = userId == _supabase.auth.currentUser?.id;
+    final avail = userId != null ? _availStatusForUser(userId) : '–';
+    final posColor = slotType == 'starter' ? Colors.blue : Colors.orange;
+
+    return Material(
+      key: ValueKey(slot['id'] as String),
+      child: ListTile(
+        dense: true,
+        leading: CircleAvatar(
+          radius: 14,
+          backgroundColor: posColor.withValues(alpha: 0.15),
+          child: Text(
+            '$pos',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: posColor,
+            ),
+          ),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _slotUserName(slot),
+                style: TextStyle(
+                  fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (userId != null) ...[
+              const SizedBox(width: 4),
+              _availChip(avail),
+            ],
+          ],
+        ),
+        subtitle: isMe
+            ? Text(
+                slotType == 'starter' ? 'Du · Starter' : 'Du · Ersatz',
+                style: const TextStyle(fontSize: 11, color: Colors.blue),
+              )
+            : null,
+        trailing: ReorderableDragStartListener(
+          index: index,
+          child: const Icon(Icons.drag_handle, color: Colors.grey),
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Reorderable slots list (admin + draft)
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildReorderableSlots(
+      List<Map<String, dynamic>> ordered,
+      int starterCount,
+      int reserveCount) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Text('Starter ($starterCount)',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            if (reserveCount > 0) ...[
+              const SizedBox(width: 12),
+              Text('· Ersatz ($reserveCount)',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange.shade700)),
+            ],
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text('Halte ☰ und ziehe um Positionen zu tauschen',
+            style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade600,
+                fontStyle: FontStyle.italic)),
+        const SizedBox(height: 8),
+        ReorderableListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          buildDefaultDragHandles: false,
+          itemCount: ordered.length,
+          onReorder: _onReorder,
+          proxyDecorator: (child, index, animation) {
+            return Material(
+              elevation: 4,
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              child: child,
+            );
+          },
+          itemBuilder: (context, index) {
+            return _buildDraggableSlotTile(
+                ordered[index], index, ordered.length);
+          },
+        ),
+      ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Carpool section builder
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildCarpoolSection() {
+    final uid = _supabase.auth.currentUser?.id;
+    final hasMyOffer =
+        uid != null && _carpoolOffers.any((o) => o.driverUserId == uid);
+    debugPrint(
+      'CARPOOL_CTA: uid=$uid hasMyOffer=$hasMyOffer '
+      'offersCount=${_carpoolOffers.length}',
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Header row with "Ich fahre" button ──
+        Row(
+          children: [
+            const Icon(Icons.directions_car, size: 20),
+            const SizedBox(width: 8),
+            Text('Fahrgemeinschaften',
+                style: Theme.of(context).textTheme.titleMedium),
+            const Spacer(),
+            if (!hasMyOffer)
+              TextButton.icon(
+                onPressed: () => _showCarpoolOfferDialog(),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Ich fahre'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        if (_carpoolOffers.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Noch keine Fahrgemeinschaften.',
+              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+            ),
+          )
+        else
+          ..._carpoolOffers.map((offer) {
+            final isDriver = offer.driverUserId == uid;
+            final isPassenger = uid != null && offer.hasPassenger(uid);
+            final canJoin = !isDriver && !isPassenger && !offer.isFull;
+            final canLeave = isPassenger;
+            debugPrint(
+              'CARPOOL_RENDER: offerId=${offer.id} '
+              'uid=$uid driverId=${offer.driverUserId} '
+              'isDriver=$isDriver isPassenger=$isPassenger '
+              'isFull=${offer.isFull} canJoin=$canJoin canLeave=$canLeave '
+              'seats=${offer.seatsTaken}/${offer.seatsTotal} '
+              'passengers=${offer.passengers.map((p) => p.userId).toList()}',
+            );
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Driver + Seats ──
+                    Row(
+                      children: [
+                        _userAvatar(offer.driverUserId, radius: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${_playerNameForUserId(offer.driverUserId)}${isDriver ? ' (du)' : ''}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              const Text('Fahrer',
+                                  style: TextStyle(
+                                      fontSize: 11, color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: offer.isFull
+                                ? Colors.red.shade50
+                                : Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${offer.seatsTaken}/${offer.seatsTotal} Plätze',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: offer.isFull
+                                  ? Colors.red.shade700
+                                  : Colors.green.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // ── Start location ──
+                    if (offer.startLocation != null &&
+                        offer.startLocation!.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on,
+                              size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(offer.startLocation!,
+                                style: const TextStyle(fontSize: 13)),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    // ── Departure time ──
+                    if (offer.departAt != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.access_time,
+                              size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Text(
+                            _formatDepartAt(offer.departAt!),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    // ── Note ──
+                    if (offer.note != null && offer.note!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.notes,
+                              size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(offer.note!,
+                                style: const TextStyle(fontSize: 13)),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    // ── Passengers list ──
+                    if (offer.passengers.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: offer.passengers.map((p) {
+                          final pName = _playerNameForUserId(p.userId);
+                          final isMe = p.userId == uid;
+                          return Chip(
+                            avatar: _userAvatar(p.userId, radius: 12),
+                            label: Text(
+                              pName,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight:
+                                    isMe ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          );
+                        }).toList(),
+                      ),
+                    ],
+
+                    // ── Action buttons ──
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (canJoin)
+                          FilledButton.tonalIcon(
+                            onPressed: () => _joinCarpool(offer.id),
+                            icon: const Icon(Icons.person_add, size: 16),
+                            label: const Text('Mitfahren'),
+                          ),
+                        if (canLeave)
+                          OutlinedButton.icon(
+                            onPressed: () => _leaveCarpool(offer.id),
+                            icon: const Icon(Icons.person_remove, size: 16),
+                            label: const Text('Aussteigen'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red.shade700,
+                            ),
+                          ),
+                        if (isDriver) ...[
+                          const SizedBox(width: 8),
+                          IconButton(
+                            onPressed: () =>
+                                _showCarpoolOfferDialog(existingOffer: offer),
+                            icon: const Icon(Icons.edit, size: 18),
+                            tooltip: 'Bearbeiten',
+                            style: IconButton.styleFrom(
+                              foregroundColor: Colors.blue,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _deleteCarpool(offer.id),
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            tooltip: 'Löschen',
+                            style: IconButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  String _formatDepartAt(DateTime dt) {
+    final local = dt.toLocal();
+    final h = local.hour.toString().padLeft(2, '0');
+    final m = local.minute.toString().padLeft(2, '0');
+    final d = local.day.toString().padLeft(2, '0');
+    final mo = local.month.toString().padLeft(2, '0');
+    return '$d.$mo. um $h:$m';
+  }
+
+  // ── Carpool actions ──
+
+  Future<void> _joinCarpool(String offerId) async {
+    final uid = _supabase.auth.currentUser?.id;
+    debugPrint('CARPOOL_JOIN_TAP: offerId=$offerId uid=$uid');
+    try {
+      await CarpoolService.join(offerId);
+      debugPrint('CARPOOL_JOIN_TAP: RPC success, reloading…');
+      await _reloadCarpool(rethrow_: true);
+      if (!mounted) return;
+      debugPrint('CARPOOL_JOIN_TAP: reload done, offers=${_carpoolOffers.length}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Du fährst mit ✅')),
+      );
+    } catch (e) {
+      debugPrint('CARPOOL_JOIN_TAP ERROR: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mitfahren fehlgeschlagen: $e'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
+  Future<void> _leaveCarpool(String offerId) async {
+    final uid = _supabase.auth.currentUser?.id;
+    debugPrint('CARPOOL_LEAVE_TAP: offerId=$offerId uid=$uid');
+    try {
+      await CarpoolService.leave(offerId);
+      debugPrint('CARPOOL_LEAVE_TAP: RPC success, reloading…');
+      await _reloadCarpool(rethrow_: true);
+      if (!mounted) return;
+      debugPrint('CARPOOL_LEAVE_TAP: reload done, offers=${_carpoolOffers.length}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ausgestiegen')),
+      );
+    } catch (e) {
+      debugPrint('CARPOOL_LEAVE_TAP ERROR: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Aussteigen fehlgeschlagen: $e'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteCarpool(String offerId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Fahrgemeinschaft löschen?'),
+        content: const Text('Alle Mitfahrer werden entfernt.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await CarpoolService.deleteOffer(offerId);
+      await _reloadCarpool();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: $e')),
+      );
+    }
+  }
+
+  Future<void> _showCarpoolOfferDialog({CarpoolOffer? existingOffer}) async {
+    int seats = existingOffer?.seatsTotal ?? 4;
+    final locationCtrl =
+        TextEditingController(text: existingOffer?.startLocation ?? '');
+    final noteCtrl =
+        TextEditingController(text: existingOffer?.note ?? '');
+    TimeOfDay? departTime = existingOffer?.departAt != null
+        ? TimeOfDay.fromDateTime(existingOffer!.departAt!.toLocal())
+        : null;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text(existingOffer != null
+              ? 'Fahrgemeinschaft bearbeiten'
+              : 'Ich fahre'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Seats stepper
+                const Text('Anzahl freie Plätze:',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: seats > 1
+                          ? () => setD(() => seats--)
+                          : null,
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                    SizedBox(
+                      width: 40,
+                      child: Text(
+                        '$seats',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: seats < 9
+                          ? () => setD(() => seats++)
+                          : null,
+                      icon: const Icon(Icons.add_circle_outline),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Start location
+                TextField(
+                  controller: locationCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Abfahrtsort',
+                    hintText: 'z.B. Bahnhof Bern',
+                    prefixIcon: Icon(Icons.location_on, size: 18),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Departure time
+                Row(
+                  children: [
+                    const Icon(Icons.access_time, size: 18),
+                    const SizedBox(width: 8),
+                    Text(departTime != null
+                        ? 'Abfahrt: ${departTime!.format(ctx)}'
+                        : 'Abfahrtszeit (optional)'),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () async {
+                        final t = await showTimePicker(
+                          context: ctx,
+                          initialTime: departTime ?? TimeOfDay.now(),
+                        );
+                        if (t != null) setD(() => departTime = t);
+                      },
+                      child: Text(
+                          departTime != null ? 'Ändern' : 'Setzen'),
+                    ),
+                    if (departTime != null)
+                      IconButton(
+                        onPressed: () => setD(() => departTime = null),
+                        icon: const Icon(Icons.clear, size: 16),
+                        tooltip: 'Entfernen',
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Note
+                TextField(
+                  controller: noteCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Notiz (optional)',
+                    hintText: 'z.B. Treffpunkt Parkplatz',
+                    prefixIcon: Icon(Icons.notes, size: 18),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(ctx, true),
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('Speichern'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true) return;
+
+    // Build depart_at DateTime from the match date + selected time
+    DateTime? departAt;
+    if (departTime != null) {
+      final matchAt = DateTime.tryParse(_match['match_at'] as String? ?? '');
+      if (matchAt != null) {
+        departAt = DateTime(
+          matchAt.year,
+          matchAt.month,
+          matchAt.day,
+          departTime!.hour,
+          departTime!.minute,
+        );
+      }
+    }
+
+    try {
+      final offerId = await CarpoolService.upsertOffer(
+        teamId: widget.teamId,
+        matchId: widget.matchId,
+        seatsTotal: seats,
+        startLocation:
+            locationCtrl.text.trim().isEmpty ? null : locationCtrl.text.trim(),
+        note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+        departAt: departAt,
+      );
+      debugPrint('CARPOOL_UI: upsert returned offerId=$offerId – refetching…');
+
+      // Refetch with rethrow so query errors surface here
+      await _reloadCarpool(rethrow_: true);
+      if (!mounted) return;
+
+      // Verify the offer is actually visible after refetch
+      final visible = _carpoolOffers.any((o) => o.id == offerId);
+      debugPrint(
+        'CARPOOL_UI: post-refetch offers=${_carpoolOffers.length}, '
+        'offerId=$offerId visible=$visible',
+      );
+
+      if (visible) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fahrgemeinschaft gespeichert ✅')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Fahrgemeinschaft erstellt, aber nicht sichtbar.\n'
+              'Mögliche Ursache: fehlende Leseberechtigung (RLS).',
+            ),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('CARPOOL_UI CREATE ERROR: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Fehler: $e'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Dinner RSVP section builder
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildDinnerSection() {
+    final uid = _supabase.auth.currentUser?.id;
+
+    // Counts
+    final yesCount = _dinnerRsvps.where((r) => r.status == 'yes').length;
+    final noCount = _dinnerRsvps.where((r) => r.status == 'no').length;
+    final maybeCount = _dinnerRsvps.where((r) => r.status == 'maybe').length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Header ──
+        Row(
+          children: [
+            const Icon(Icons.restaurant, size: 20),
+            const SizedBox(width: 8),
+            Text('Essen',
+                style: Theme.of(context).textTheme.titleMedium),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // ── My RSVP Buttons ──
+        Row(
+          children: [
+            _dinnerButton('Ja', 'yes', Icons.check_circle_outline),
+            const SizedBox(width: 8),
+            _dinnerButton('Nein', 'no', Icons.cancel_outlined),
+            const SizedBox(width: 8),
+            _dinnerButton('Vielleicht', 'maybe', Icons.help_outline),
+          ],
+        ),
+
+        // ── Note input (visible after choosing yes/maybe) ──
+        if (_myDinnerStatus == 'yes' || _myDinnerStatus == 'maybe') ...[
+          const SizedBox(height: 8),
+          _buildDinnerNoteField(),
+        ],
+
+        const SizedBox(height: 12),
+
+        // ── Summary counts ──
+        Wrap(
+          spacing: 16,
+          children: [
+            _dinnerCountChip('✅ Ja', yesCount, Colors.green),
+            _dinnerCountChip('❌ Nein', noCount, Colors.red),
+            _dinnerCountChip('❓ Vielleicht', maybeCount, Colors.orange),
+          ],
+        ),
+
+        // ── RSVP list ──
+        if (_dinnerRsvps.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          ...List.generate(_dinnerRsvps.length, (i) {
+            final rsvp = _dinnerRsvps[i];
+            final name = _playerNameForUserId(rsvp.userId);
+            final isMe = rsvp.userId == uid;
+            return ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              contentPadding: EdgeInsets.zero,
+              leading: _userAvatar(rsvp.userId, radius: 16),
+              title: Text(
+                '$name${isMe ? ' (du)' : ''}',
+                style: TextStyle(
+                  fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              subtitle: rsvp.note != null && rsvp.note!.isNotEmpty
+                  ? Text(rsvp.note!, style: const TextStyle(fontSize: 12))
+                  : null,
+              trailing: Text(
+                rsvp.statusEmoji,
+                style: const TextStyle(fontSize: 18),
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  Widget _dinnerButton(String label, String status, IconData icon) {
+    final isSelected = _myDinnerStatus == status;
+    final Color color;
+    switch (status) {
+      case 'yes':
+        color = Colors.green;
+        break;
+      case 'no':
+        color = Colors.red;
+        break;
+      default:
+        color = Colors.orange;
+    }
+
+    return Expanded(
+      child: OutlinedButton.icon(
+        onPressed: () => _setDinnerRsvp(status),
+        icon: Icon(icon, size: 18, color: isSelected ? Colors.white : color),
+        label: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : color,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: isSelected ? color : null,
+          side: BorderSide(color: color),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+        ),
+      ),
+    );
+  }
+
+  Widget _dinnerCountChip(String label, int count, Color color) {
+    return Chip(
+      label: Text('$label: $count',
+          style: TextStyle(fontSize: 12, color: color)),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      side: BorderSide(color: color.withValues(alpha: 0.3)),
+      backgroundColor: color.withValues(alpha: 0.08),
+    );
+  }
+
+  Widget _buildDinnerNoteField() {
+    // Find my current note
+    final uid = _supabase.auth.currentUser?.id;
+    final myRsvp = _dinnerRsvps
+        .where((r) => r.userId == uid)
+        .firstOrNull;
+    final ctrl = TextEditingController(text: myRsvp?.note ?? '');
+
+    return TextField(
+      controller: ctrl,
+      decoration: const InputDecoration(
+        hintText: 'Notiz (z.B. "komme später")',
+        isDense: true,
+        border: OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      textInputAction: TextInputAction.done,
+      onSubmitted: (value) {
+        if (_myDinnerStatus != null) {
+          _setDinnerRsvp(_myDinnerStatus!, note: value);
+        }
+      },
+    );
+  }
+
+  Future<void> _setDinnerRsvp(String status, {String? note}) async {
+    try {
+      // If same status tapped again without note change, just ignore
+      final uid = _supabase.auth.currentUser?.id;
+      final existingRsvp = _dinnerRsvps
+          .where((r) => r.userId == uid)
+          .firstOrNull;
+
+      // Use existing note if none provided
+      final effectiveNote = note ?? existingRsvp?.note;
+
+      await DinnerService.upsertRsvp(
+        matchId: widget.matchId,
+        status: status,
+        note: effectiveNote,
+      );
+      await _reloadDinner();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(status == 'yes'
+              ? 'Du isst mit! 🍽️'
+              : status == 'no'
+                  ? 'Kein Essen für dich.'
+                  : 'Vielleicht – wir zählen dich mal mit.'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('DINNER_UPSERT ERROR: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: $e')),
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Expenses section builder
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildExpensesSection() {
+    final uid = _supabase.auth.currentUser?.id;
+
+    // Summary
+    final totalCents =
+        _expenses.fold<int>(0, (sum, e) => sum + e.amountCents);
+    final totalCHF = totalCents / 100.0;
+    final totalOpenCents =
+        _expenses.fold<int>(0, (sum, e) => sum + e.openCents);
+    final totalPaidCents = totalCents - totalOpenCents;
+    final memberCount =
+        _expenses.isNotEmpty ? _expenses.first.shareCount : _members.length;
+    final perPersonCHF = memberCount > 0 ? totalCHF / memberCount : 0.0;
+
+    // Dinner-yes count (for the hint in the dialog)
+    final dinnerYesCount =
+        _dinnerRsvps.where((r) => r.status == 'yes').length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Header with add button ──
+        Row(
+          children: [
+            const Icon(Icons.receipt_long, size: 20),
+            const SizedBox(width: 8),
+            Text('Spesen',
+                style: Theme.of(context).textTheme.titleMedium),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: dinnerYesCount > 0
+                  ? () => _showCreateExpenseDialog()
+                  : () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Keine Dinner-Zusagen (Ja) – '
+                            'bitte zuerst unter "Essen" zusagen.',
+                          ),
+                        ),
+                      );
+                    },
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Hinzufügen'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // ── Summary ──
+        if (_expenses.isNotEmpty) ...[
+          Card(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Total',
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.grey)),
+                          Text(
+                            'CHF ${totalCHF.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text('Pro Kopf ($memberCount Pers.)',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.grey)),
+                          Text(
+                            'CHF ${perPersonCHF.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '✅ Bezahlt: CHF ${(totalPaidCents / 100).toStringAsFixed(2)}',
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.green.shade700),
+                      ),
+                      Text(
+                        '⏳ Offen: CHF ${(totalOpenCents / 100).toStringAsFixed(2)}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: totalOpenCents > 0
+                                ? Colors.orange.shade700
+                                : Colors.green.shade700),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+
+        // ── Empty state ──
+        if (_expenses.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              dinnerYesCount > 0
+                  ? 'Noch keine Spesen erfasst.'
+                  : 'Noch keine Spesen – zuerst unter "Essen" zusagen.',
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ),
+
+        // ── Expense list (expandable with shares) ──
+        ...List.generate(_expenses.length, (i) {
+          final expense = _expenses[i];
+          final paidByName = _playerNameForUserId(expense.paidByUserId);
+          final isPaidByMe = expense.paidByUserId == uid;
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ExpansionTile(
+              leading: CircleAvatar(
+                backgroundColor: expense.openCount == 0
+                    ? Colors.green.shade100
+                    : Colors.orange.shade100,
+                child: Icon(
+                  expense.openCount == 0
+                      ? Icons.check_circle
+                      : Icons.payments,
+                  color: expense.openCount == 0
+                      ? Colors.green
+                      : Colors.orange,
+                ),
+              ),
+              title: Text(expense.title),
+              subtitle: Text(
+                'Bezahlt von $paidByName${isPaidByMe ? ' (du)' : ''}'
+                ' · ${expense.amountFormatted}'
+                '${expense.note != null && expense.note!.isNotEmpty ? '\n${expense.note}' : ''}',
+              ),
+              trailing: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${expense.perPersonFormatted}/Pers.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+                  Text(
+                    '${expense.paidCount}/${expense.shareCount} bezahlt',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: expense.openCount == 0
+                          ? Colors.green
+                          : Colors.orange,
+                    ),
+                  ),
+                ],
+              ),
+              children: [
+                // ── Share list ──
+                ...expense.shares.map((share) {
+                  final shareName = _playerNameForUserId(share.userId);
+                  final isMe = share.userId == uid;
+                  final canToggle = isMe || isPaidByMe || _isAdmin;
+
+                  return ListTile(
+                    dense: true,
+                    leading: _userAvatar(share.userId, radius: 14),
+                    title: Text(
+                      '$shareName${isMe ? ' (du)' : ''}',
+                      style: TextStyle(
+                        fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+                        decoration: share.isPaid
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'CHF ${share.shareDouble.toStringAsFixed(2)}'
+                      '${share.isPaid ? ' · ✅ Bezahlt' : ' · ⏳ Offen'}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: share.isPaid ? Colors.green : Colors.orange,
+                      ),
+                    ),
+                    trailing: canToggle
+                        ? Switch(
+                            value: share.isPaid,
+                            activeTrackColor: Colors.green.shade200,
+                            activeThumbColor: Colors.green,
+                            onChanged: (_) => _toggleSharePaid(
+                              share.id,
+                              !share.isPaid,
+                            ),
+                          )
+                        : Icon(
+                            share.isPaid
+                                ? Icons.check_circle
+                                : Icons.radio_button_unchecked,
+                            color:
+                                share.isPaid ? Colors.green : Colors.grey,
+                            size: 20,
+                          ),
+                  );
+                }),
+                // ── Delete action (for payer) ──
+                if (isPaidByMe)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TextButton.icon(
+                      onPressed: () => _confirmDeleteExpense(expense),
+                      icon: const Icon(Icons.delete_outline,
+                          size: 16, color: Colors.red),
+                      label: const Text('Spese löschen',
+                          style: TextStyle(color: Colors.red, fontSize: 12)),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Future<void> _toggleSharePaid(String shareId, bool paid) async {
+    try {
+      await ExpenseService.markSharePaid(shareId: shareId, paid: paid);
+      await _reloadExpenses();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(paid ? 'Als bezahlt markiert ✅' : 'Als offen markiert'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    } catch (e) {
+      debugPrint('EXPENSE_TOGGLE_PAID ERROR: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: $e')),
+      );
+    }
+  }
+
+  Future<void> _showCreateExpenseDialog() async {
+    final titleCtrl = TextEditingController();
+    final amountCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Spese hinzufügen'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Titel *',
+                  hintText: 'z.B. Pizza, Getränke',
+                  border: OutlineInputBorder(),
+                ),
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: amountCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Betrag (CHF) *',
+                  hintText: 'z.B. 45.50',
+                  border: OutlineInputBorder(),
+                  prefixText: 'CHF ',
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Notiz (optional)',
+                  hintText: 'z.B. Restaurant Adler',
+                  border: OutlineInputBorder(),
+                ),
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Wird gleichmässig auf alle '
+                '${_dinnerRsvps.where((r) => r.status == 'yes').length} '
+                'Dinner-Teilnehmer (Ja) verteilt.',
+                style: TextStyle(
+                    fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final title = titleCtrl.text.trim();
+    final amountText = amountCtrl.text.trim().replaceAll(',', '.');
+    final note = noteCtrl.text.trim();
+
+    if (title.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bitte Titel eingeben.')),
+      );
+      return;
+    }
+
+    final amount = double.tryParse(amountText);
+    if (amount == null || amount <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bitte gültigen Betrag eingeben.')),
+      );
+      return;
+    }
+
+    try {
+      await ExpenseService.createExpenseEqualSplit(
+        matchId: widget.matchId,
+        title: title,
+        amountCHF: amount,
+        note: note.isNotEmpty ? note : null,
+      );
+      await _reloadExpenses();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Spese "$title" (CHF ${amount.toStringAsFixed(2)}) erstellt.'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('EXPENSE_CREATE ERROR: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Fehler: $e'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteExpense(Expense expense) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Spese löschen?'),
+        content: Text(
+          '„${expense.title}" (${expense.amountFormatted}) '
+          'und alle Anteile werden gelöscht.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await ExpenseService.deleteExpense(expense.id);
+      await _reloadExpenses();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Spese „${expense.title}" gelöscht.'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('EXPENSE_DELETE ERROR: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: $e')),
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Sub-request section builder
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildSubRequestSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Ersatzanfragen',
+            style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+
+        // ── Pending requests for ME (I am the substitute) ──
+        if (_myPendingSubRequests.isNotEmpty) ...[
+          const Text('Du wurdest angefragt:',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, color: Colors.orange)),
+          const SizedBox(height: 4),
+          ..._myPendingSubRequests.map((req) {
+            final originalId = req['original_user_id'] as String? ?? '';
+            final originalName = _playerNameForUserId(originalId);
+            return Card(
+              color: Colors.orange.shade50,
+              child: ListTile(
+                leading:
+                    const Icon(Icons.swap_horiz, color: Colors.orange),
+                title: Text('Ersatz für $originalName'),
+                subtitle: const Text('Kannst du einspringen?'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.check_circle,
+                          color: Colors.green, size: 32),
+                      tooltip: 'Annehmen',
+                      onPressed: () => _respondSubRequest(
+                          req['id'] as String, 'accepted'),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.cancel,
+                          color: Colors.red, size: 32),
+                      tooltip: 'Ablehnen',
+                      onPressed: () => _respondSubRequest(
+                          req['id'] as String, 'declined'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: 12),
+        ],
+
+        // ── All requests for this match (history / captain view) ──
+        if (_subRequests.isNotEmpty) ...[
+          const Text('Anfragen-Verlauf:',
+              style: TextStyle(fontStyle: FontStyle.italic)),
+          const SizedBox(height: 4),
+          ..._subRequests.map((req) {
+            final status = req['status'] as String? ?? '?';
+            final originalName =
+                _playerNameForUserId(req['original_user_id'] as String? ?? '');
+            final subName = _playerNameForUserId(
+                req['substitute_user_id'] as String? ?? '');
+            final icon = switch (status) {
+              'pending' => Icons.hourglass_top,
+              'accepted' => Icons.check_circle,
+              'declined' => Icons.cancel,
+              'expired' => Icons.timer_off,
+              _ => Icons.help_outline,
+            };
+            final color = switch (status) {
+              'pending' => Colors.orange,
+              'accepted' => Colors.green,
+              'declined' => Colors.red,
+              'expired' => Colors.grey,
+              _ => Colors.grey,
+            };
+            return ListTile(
+              dense: true,
+              leading: Icon(icon, color: color, size: 20),
+              title: Text('$subName für $originalName'),
+              trailing: Chip(
+                label: Text(status,
+                    style: const TextStyle(fontSize: 11)),
+                backgroundColor: color.withValues(alpha: 0.15),
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  /// Resolve a user_id to a display name via claimed player slots,
+  /// profiles (display_name), member nickname, or UUID fallback.
+  String _playerNameForUserId(String userId) {
+    // 1. Claimed player slot (first_name + last_name)
+    final claimed = _claimedMap[userId];
+    if (claimed != null) {
+      final name = TeamPlayerService.playerDisplayName(claimed);
+      if (name.isNotEmpty && name != '?') return name;
+    }
+    // 2. Profile display_name
+    final profile = _profiles[userId];
+    if (profile != null) {
+      final dn = profile['display_name'] as String?;
+      if (dn != null && dn.isNotEmpty && dn != 'Spieler') return dn;
+    }
+    // 3. Member embedded profile or nickname
+    final member =
+        _members.where((m) => m['user_id'] == userId).firstOrNull;
+    if (member != null) {
+      final nick = member['nickname'] as String?;
+      if (nick != null && nick.isNotEmpty) return nick;
+      final embedded = member['cs_app_profiles'];
+      if (embedded is Map<String, dynamic>) {
+        final dn = embedded['display_name'] as String?;
+        if (dn != null && dn.isNotEmpty && dn != 'Spieler') return dn;
+        final email = embedded['email'] as String?;
+        if (email != null && email.isNotEmpty) return email.split('@').first;
+      }
+    }
+    // 4. Fallback
+    return 'Unbekannt';
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  Player status tile (availability list)
   // ═══════════════════════════════════════════════════════════
 
@@ -1110,6 +2914,14 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final display =
         rank.isNotEmpty ? '$nameStr · $rank' : nameStr;
 
+    // Show "Ersatz anfordern" for admin when player is 'no'
+    // and lineup is published, and no pending request already exists.
+    final isPublished = _lineup?['status'] == 'published';
+    final hasPending = _subRequests.any((r) =>
+        r['original_user_id'] == uid && r['status'] == 'pending');
+    final showSubButton =
+        _isAdmin && status == 'no' && isPublished && !hasPending;
+
     return ListTile(
       dense: true,
       leading: _statusIcon(status),
@@ -1120,9 +2932,26 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         ),
       ),
       subtitle: Text(_statusLabel(status)),
-      trailing: isMe
-          ? const Icon(Icons.person, size: 16, color: Colors.blue)
-          : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isMe)
+            const Icon(Icons.person, size: 16, color: Colors.blue),
+          if (showSubButton) ...[
+            const SizedBox(width: 4),
+            TextButton.icon(
+              onPressed: () => _createSubRequest(uid),
+              icon: const Icon(Icons.swap_horiz, size: 16),
+              label: const Text('Ersatz', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 32),
+                foregroundColor: Colors.orange.shade700,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 

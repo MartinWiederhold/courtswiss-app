@@ -34,6 +34,9 @@ Future<void> main() async {
     print('AUTH_ANON uid=${res.user?.id}');
   }
 
+  // ignore: avoid_print
+  print('APP_START userId=${Supabase.instance.client.auth.currentUser?.id}');
+
   await DeepLinkService.instance.init();
 
   // Initialise local push notifications (degrades gracefully)

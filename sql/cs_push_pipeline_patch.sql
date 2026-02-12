@@ -68,6 +68,9 @@ CREATE POLICY cs_device_tokens_delete ON public.cs_device_tokens
   FOR DELETE USING (user_id = auth.uid());
 
 -- RPC: cs_upsert_device_token
+-- When a user session changes (e.g. anonymous → linked), the same FCM token
+-- may already exist under a different user_id.  We delete stale rows first
+-- so that every token belongs to exactly one user at any time.
 DROP FUNCTION IF EXISTS public.cs_upsert_device_token(text, text, text, boolean);
 CREATE OR REPLACE FUNCTION public.cs_upsert_device_token(
   p_platform  text,
@@ -81,6 +84,19 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  -- 1. Remove any rows that carry the SAME token but belong to a
+  --    DIFFERENT user.  This re-assigns the token to the current user.
+  DELETE FROM public.cs_device_tokens
+  WHERE token     = p_token
+    AND user_id  <> auth.uid();
+
+  -- 2. Also remove rows with the same device_id but different user
+  --    (same physical device, new session).
+  DELETE FROM public.cs_device_tokens
+  WHERE device_id = p_device_id
+    AND user_id  <> auth.uid();
+
+  -- 3. Upsert for current user + device.
   INSERT INTO public.cs_device_tokens
     (user_id, platform, token, device_id, enabled, last_seen_at, updated_at)
   VALUES

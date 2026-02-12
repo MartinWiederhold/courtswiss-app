@@ -36,13 +36,28 @@ class DeviceTokenService {
   /// [token] – the FCM/APNs token string.
   /// [platform] – 'ios' or 'android'. Auto-detected if omitted.
   /// [enabled] – whether push is enabled for this device.
+  ///
+  /// The RPC `cs_upsert_device_token` (SECURITY DEFINER) uses `auth.uid()`
+  /// server-side.  It also cleans up stale rows where the same token or
+  /// device_id belonged to a different user (session change).
   static Future<void> registerToken({
     required String token,
     String? platform,
     bool enabled = true,
   }) async {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) {
+      debugPrint('DeviceTokenService.registerToken: no auth user, skipping');
+      return;
+    }
+
     final deviceId = await getOrCreateDeviceId();
     final plat = platform ?? currentPlatform;
+
+    final tokenPrefix = token.length > 12 ? token.substring(0, 12) : token;
+    // ignore: avoid_print
+    print('DeviceTokenService UPSERT uid=${uid.substring(0, 8)}… '
+        'device=$deviceId token=$tokenPrefix… platform=$plat');
 
     try {
       await _supabase.rpc('cs_upsert_device_token', params: {
