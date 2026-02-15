@@ -78,16 +78,13 @@ class DinnerService {
       throw ArgumentError('Ungültiger Status: $status');
     }
 
-    await _supabase.from('cs_dinner_rsvps').upsert(
-      {
-        'match_id': matchId,
-        'user_id': uid,
-        'status': status,
-        'note': note,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      onConflict: 'match_id,user_id',
-    );
+    await _supabase.from('cs_dinner_rsvps').upsert({
+      'match_id': matchId,
+      'user_id': uid,
+      'status': status,
+      'note': note,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'match_id,user_id');
 
     debugPrint('DINNER_UPSERT: success');
   }

@@ -30,10 +30,10 @@ class SubRequestService {
     required String matchId,
     required String originalUserId,
   }) async {
-    final result = await _supabase.rpc('cs_create_sub_request', params: {
-      'p_match_id': matchId,
-      'p_original_user_id': originalUserId,
-    });
+    final result = await _supabase.rpc(
+      'cs_create_sub_request',
+      params: {'p_match_id': matchId, 'p_original_user_id': originalUserId},
+    );
     return Map<String, dynamic>.from(result as Map);
   }
 
@@ -49,10 +49,10 @@ class SubRequestService {
     required String requestId,
     required String response,
   }) async {
-    final result = await _supabase.rpc('cs_respond_sub_request', params: {
-      'p_request_id': requestId,
-      'p_response': response,
-    });
+    final result = await _supabase.rpc(
+      'cs_respond_sub_request',
+      params: {'p_request_id': requestId, 'p_response': response},
+    );
     return Map<String, dynamic>.from(result as Map);
   }
 
@@ -63,8 +63,7 @@ class SubRequestService {
   }
 
   /// List all sub requests for a specific match (any status).
-  static Future<List<Map<String, dynamic>>> listForMatch(
-      String matchId) async {
+  static Future<List<Map<String, dynamic>>> listForMatch(String matchId) async {
     final rows = await _supabase
         .from('cs_sub_requests')
         .select()

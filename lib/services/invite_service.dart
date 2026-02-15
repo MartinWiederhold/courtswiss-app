@@ -15,16 +15,14 @@ class InviteService {
   /// Accepts an invite by token.
   /// Returns ({teamId, joined}) – joined=false means user was already a member.
   static Future<({String teamId, bool joined})> acceptInvite(
-      String token) async {
+    String token,
+  ) async {
     final result = await _supabase.rpc(
       'accept_team_invite',
       params: {'p_token': token},
     );
     final data = result as Map<String, dynamic>;
-    return (
-      teamId: data['team_id'] as String,
-      joined: data['joined'] as bool,
-    );
+    return (teamId: data['team_id'] as String, joined: data['joined'] as bool);
   }
 
   /// Build the invite deep link (custom scheme)

@@ -1,19 +1,93 @@
+// ── DEV NOTE ──────────────────────────────────────────────────────
+// UPDATED: AuthGate now shows AuthScreen when no session exists,
+// instead of a loading spinner (we no longer auto-create anon).
+// Invite links arriving without a session create an on-demand anon
+// session so the invite can still be accepted.
+// Password recovery deep links push ResetPasswordScreen.
+// Modified as part of Auth/Onboarding v2 rework.
+// ──────────────────────────────────────────────────────────────────
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/profile_service.dart';
+import '../services/identity_link_service.dart';
 import '../services/invite_service.dart';
 import '../services/member_service.dart';
 import '../services/deep_link_service.dart';
 import '../services/notification_service.dart';
 import '../services/push_service.dart';
 import '../services/team_player_service.dart';
-import '../screens/teams_screen.dart';
+import '../theme/cs_theme.dart';
+import '../widgets/ui/ui.dart';
+import '../screens/auth_screen.dart';
+import '../screens/main_tab_screen.dart';
 import '../screens/team_detail_screen.dart';
 import '../screens/claim_screen.dart';
+import '../screens/reset_password_screen.dart';
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  StreamSubscription<String>? _inviteSub;
+  StreamSubscription<void>? _pwRecoverySub;
+
+  /// True while we're creating an on-demand anon session for an invite.
+  bool _creatingAnonForInvite = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenForInviteWithoutSession();
+    _listenForPasswordRecovery();
+  }
+
+  @override
+  void dispose() {
+    _inviteSub?.cancel();
+    _pwRecoverySub?.cancel();
+    super.dispose();
+  }
+
+  /// If an invite link arrives and there is NO session, create an anon
+  /// session on-demand so the invite flow can proceed.
+  void _listenForInviteWithoutSession() {
+    _inviteSub = DeepLinkService.instance.onInviteToken.listen((token) async {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) return; // already logged in → handled by LoggedInScreen
+
+      if (_creatingAnonForInvite) return; // prevent double-fire
+      _creatingAnonForInvite = true;
+      try {
+        debugPrint('AuthGate: creating anon session for invite token');
+        await Supabase.instance.client.auth.signInAnonymously();
+        // Save the anon UID so we can migrate data later if user registers
+        await IdentityLinkService.saveAnonUid();
+        // The auth state change will rebuild the widget tree → LoggedInScreen
+        // will pick up the pending invite token.
+      } catch (e) {
+        debugPrint('AuthGate: anon session creation failed: $e');
+      } finally {
+        _creatingAnonForInvite = false;
+      }
+    });
+  }
+
+  /// Password recovery deep links push the ResetPasswordScreen.
+  void _listenForPasswordRecovery() {
+    _pwRecoverySub = DeepLinkService.instance.onPasswordRecovery.listen((_) {
+      if (!mounted) return;
+      // Push ResetPasswordScreen on top of whatever is showing
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,15 +100,16 @@ class AuthGate extends StatelessWidget {
           return const LoggedInScreen();
         }
 
-        // With anonymous auth this should not happen;
-        // safety-net: show a loading spinner while session is being created.
-        return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        );
+        // No session → show Auth screen (Login / Register)
+        return const AuthScreen();
       },
     );
   }
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  LoggedInScreen — wraps MainTabScreen + handles invites/push
+// ══════════════════════════════════════════════════════════════════
 
 class LoggedInScreen extends StatefulWidget {
   const LoggedInScreen({super.key});
@@ -73,17 +148,22 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
       onInsert: (notification) {
         if (!mounted) return;
         final message = NotificationService.formatMessage(notification);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('🔔 $message'),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        CsToast.info(context, message);
       },
     );
   }
 
   Future<void> _init() async {
+    // Migrate anon data if this is a fresh login after an anon session
+    try {
+      final migrated = await IdentityLinkService.migrateIfNeeded();
+      if (migrated) {
+        debugPrint('LoggedInScreen: anon data migrated successfully');
+      }
+    } catch (e) {
+      debugPrint('IdentityLinkService.migrateIfNeeded error: $e');
+    }
+
     // Ensure profile exists
     try {
       await ProfileService.ensureProfile();
@@ -94,40 +174,6 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
     // Initialise FCM push notifications (after auth session exists)
     try {
       await PushService.initPush();
-      // Show FCM token in UI for debug (easy to copy from SnackBar)
-      if (mounted && PushService.lastToken != null) {
-        final token = PushService.lastToken!;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: SelectableText(
-              'FCM: ${token.substring(0, 30)}…',
-              style: const TextStyle(fontSize: 11),
-            ),
-            duration: const Duration(seconds: 8),
-            action: SnackBarAction(
-              label: 'FULL',
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('FCM Token'),
-                    content: SelectableText(
-                      token,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('OK'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      }
     } catch (e) {
       debugPrint('PushService.initPush error: $e');
     }
@@ -155,7 +201,8 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
       final result = await InviteService.acceptInvite(token);
       // ignore: avoid_print
       print(
-          'ACCEPT_INVITE result teamId=${result.teamId} joined=${result.joined}');
+        'ACCEPT_INVITE result teamId=${result.teamId} joined=${result.joined}',
+      );
       if (!mounted) return;
 
       // Pop any pushed screens back to root
@@ -166,10 +213,10 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
 
       if (result.joined) {
         // ── Check if team has player slots → ClaimScreen ──
-        final hasSlots =
-            await TeamPlayerService.hasPlayerSlots(result.teamId);
-        final alreadyClaimed =
-            await TeamPlayerService.getMyClaimedPlayer(result.teamId);
+        final hasSlots = await TeamPlayerService.hasPlayerSlots(result.teamId);
+        final alreadyClaimed = await TeamPlayerService.getMyClaimedPlayer(
+          result.teamId,
+        );
 
         if (!mounted) return;
 
@@ -202,14 +249,10 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
             final name = await _showMandatoryNameDialog(result.teamId);
             if (!mounted) return;
             if (name != null) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('✅ Willkommen, $name!')),
-              );
+              CsToast.success(context, 'Willkommen, $name!');
             }
           } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('✅ Spieler zugeordnet!')),
-            );
+            CsToast.success(context, 'Spieler zugeordnet');
           }
 
           // Navigate to TeamDetailScreen
@@ -220,32 +263,28 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
           if (!mounted) return;
 
           if (name != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('✅ Willkommen, $name!')),
-            );
+            CsToast.success(context, 'Willkommen, $name!');
           }
 
           _navigateToTeam(result.teamId, null);
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('ℹ️ Du bist bereits Mitglied dieses Teams')),
-        );
+        CsToast.info(context, 'Du bist bereits Mitglied dieses Teams');
       }
     } catch (e) {
       debugPrint('acceptInvite failed: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ Invite fehlgeschlagen: $e')),
-      );
+      CsToast.error(context, 'Einladung konnte nicht angenommen werden.');
     }
   }
 
   Future<void> _navigateToTeam(
-      String teamId, Map<String, dynamic>? preloadedTeam) async {
+    String teamId,
+    Map<String, dynamic>? preloadedTeam,
+  ) async {
     try {
-      final team = preloadedTeam ??
+      final team =
+          preloadedTeam ??
           await Supabase.instance.client
               .from('cs_teams')
               .select()
@@ -255,10 +294,7 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => TeamDetailScreen(
-            teamId: teamId,
-            team: team,
-          ),
+          builder: (_) => TeamDetailScreen(teamId: teamId, team: team),
         ),
       );
     } catch (e) {
@@ -275,9 +311,13 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
     final controller = TextEditingController();
     String? savedName;
 
-    await showDialog<void>(
+    await showModalBottomSheet<void>(
       context: context,
-      barrierDismissible: false,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      sheetAnimationStyle: CsMotion.sheet,
       builder: (ctx) {
         bool saving = false;
         String? errorText;
@@ -285,72 +325,150 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
         return PopScope(
           canPop: false,
           child: StatefulBuilder(
-            builder: (ctx, setStateDialog) {
+            builder: (ctx, setStateSheet) {
               final text = controller.text.trim();
               final isValid = text.length >= 2 && text.length <= 30;
 
-              return AlertDialog(
-                title: const Text('Wie heisst du?'),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Bitte gib deinen Namen ein,\n'
-                      'damit dein Team dich erkennt.',
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: controller,
-                      decoration: InputDecoration(
-                        labelText: 'Dein Name im Team',
-                        hintText: 'z.B. Max, Sandro, Martin W.',
-                        errorText: errorText,
-                        counterText: '${text.length}/30',
-                      ),
-                      autofocus: true,
-                      textCapitalization: TextCapitalization.words,
-                      maxLength: 30,
-                      onChanged: (_) => setStateDialog(() {}),
-                    ),
-                    if (saving) ...[
-                      const SizedBox(height: 8),
-                      const LinearProgressIndicator(),
-                    ],
-                  ],
+              return Container(
+                margin: EdgeInsets.only(
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom,
                 ),
-                actions: [
-                  ElevatedButton(
-                    onPressed: (!isValid || saving)
-                        ? null
-                        : () async {
-                            final name = controller.text.trim();
-
-                            if (name.length < 2) {
-                              setStateDialog(
-                                  () => errorText = 'Mindestens 2 Zeichen');
-                              return;
-                            }
-
-                            setStateDialog(() {
-                              saving = true;
-                              errorText = null;
-                            });
-
-                            try {
-                              await MemberService.updateMyNickname(
-                                  teamId, name);
-                              savedName = name;
-                              if (ctx.mounted) Navigator.pop(ctx);
-                            } catch (e) {
-                              setStateDialog(() {
-                                saving = false;
-                                errorText = 'Fehler: $e';
-                              });
-                            }
-                          },
-                    child: const Text('Speichern'),
+                decoration: const BoxDecoration(
+                  color: CsColors.blackCard,
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(CsRadii.xl),
                   ),
-                ],
+                ),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Wie heisst du?',
+                        style: CsTextStyles.onDarkPrimary.copyWith(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Bitte gib deinen Namen ein,\ndamit dein Team dich erkennt.',
+                        style: CsTextStyles.onDarkSecondary.copyWith(
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: controller,
+                        style: CsTextStyles.onDarkPrimary,
+                        decoration: InputDecoration(
+                          labelText: 'Dein Name im Team',
+                          hintText: 'z.B. Max, Sandro, Martin W.',
+                          errorText: errorText,
+                          counterText: '${text.length}/30',
+                          counterStyle: CsTextStyles.onDarkTertiary.copyWith(
+                            fontSize: 11,
+                          ),
+                          labelStyle: CsTextStyles.onDarkSecondary,
+                          hintStyle: CsTextStyles.onDarkTertiary,
+                          prefixIcon: const Icon(
+                            Icons.person_outline,
+                            color: CsColors.gray400,
+                            size: 20,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.07),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(CsRadii.md),
+                            borderSide: BorderSide(
+                              color:
+                                  Colors.white.withValues(alpha: 0.12),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(CsRadii.md),
+                            borderSide: const BorderSide(
+                              color: CsColors.lime,
+                              width: 1.5,
+                            ),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(CsRadii.md),
+                            borderSide: const BorderSide(
+                              color: CsColors.amber,
+                            ),
+                          ),
+                          focusedErrorBorder: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(CsRadii.md),
+                            borderSide: const BorderSide(
+                              color: CsColors.amber,
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                        autofocus: true,
+                        textCapitalization: TextCapitalization.words,
+                        maxLength: 30,
+                        onChanged: (_) => setStateSheet(() {}),
+                      ),
+                      if (saving) ...[
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius:
+                              BorderRadius.circular(CsRadii.md),
+                          child: const LinearProgressIndicator(
+                            color: CsColors.lime,
+                            backgroundColor: CsColors.blackCard2,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      CsPrimaryButton(
+                        label: 'Speichern',
+                        icon: const Icon(Icons.check_rounded, size: 18),
+                        onPressed: (!isValid || saving)
+                            ? null
+                            : () async {
+                                final name = controller.text.trim();
+
+                                if (name.length < 2) {
+                                  setStateSheet(
+                                    () => errorText =
+                                        'Mindestens 2 Zeichen',
+                                  );
+                                  return;
+                                }
+
+                                setStateSheet(() {
+                                  saving = true;
+                                  errorText = null;
+                                });
+
+                                try {
+                                  await MemberService.updateMyNickname(
+                                    teamId,
+                                    name,
+                                  );
+                                  savedName = name;
+                                  if (ctx.mounted) Navigator.pop(ctx);
+                                } catch (e) {
+                                  setStateSheet(() {
+                                    saving = false;
+                                    errorText = 'Name konnte nicht gespeichert werden.';
+                                  });
+                                }
+                              },
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
               );
             },
           ),
@@ -365,6 +483,6 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return TeamsScreen(key: ValueKey(_refreshCounter));
+    return MainTabScreen(key: ValueKey(_refreshCounter));
   }
 }

@@ -1,5 +1,6 @@
-/// Pure utility functions for detecting lineup rule violations.
-/// No Flutter/Supabase dependencies – unit-testable with plain Dart.
+// Pure utility functions for detecting lineup rule violations.
+// No Flutter/Supabase dependencies – unit-testable with plain Dart.
+import '../models/ranking_data.dart';
 
 /// A single detected rule violation.
 class LineupViolation {
@@ -61,9 +62,7 @@ enum LineupViolationCode {
 ///   - `cs_team_players` (Map?) – optional embedded player data with `ranking`
 ///
 /// Returns an empty list when no violations are found.
-List<LineupViolation> detectLineupViolations(
-  List<Map<String, dynamic>> slots,
-) {
+List<LineupViolation> detectLineupViolations(List<Map<String, dynamic>> slots) {
   final violations = <LineupViolation>[];
 
   // ── A) Missing starter ──────────────────────────────────────
@@ -92,11 +91,13 @@ void _checkMissingStarters(
     final userId = slot['user_id'];
     if (userId == null || (userId is String && userId.isEmpty)) {
       final pos = slot['position'] as int;
-      out.add(LineupViolation(
-        code: LineupViolationCode.missingStarter,
-        message: 'Starter Position $pos hat keinen Spieler.',
-        slotId: slot['id'] as String?,
-      ));
+      out.add(
+        LineupViolation(
+          code: LineupViolationCode.missingStarter,
+          message: 'Starter Position $pos hat keinen Spieler.',
+          slotId: slot['id'] as String?,
+        ),
+      );
     }
   }
 }
@@ -112,12 +113,14 @@ void _checkDuplicatePlayers(
     if (userId == null || userId.isEmpty) continue;
 
     if (seen.containsKey(userId)) {
-      out.add(LineupViolation(
-        code: LineupViolationCode.duplicatePlayer,
-        message: 'Spieler ist mehrfach in der Aufstellung.',
-        slotId: slot['id'] as String?,
-        userId: userId,
-      ));
+      out.add(
+        LineupViolation(
+          code: LineupViolationCode.duplicatePlayer,
+          message: 'Spieler ist mehrfach in der Aufstellung.',
+          slotId: slot['id'] as String?,
+          userId: userId,
+        ),
+      );
     } else {
       seen[userId] = slot['id'] as String? ?? '';
     }
@@ -136,11 +139,8 @@ void _checkRankingOrder(
   List<LineupViolation> out,
 ) {
   // Collect starters sorted by their position.
-  final starters = slots
-      .where((s) => s['slot_type'] == 'starter')
-      .toList()
-    ..sort((a, b) =>
-        (a['position'] as int).compareTo(b['position'] as int));
+  final starters = slots.where((s) => s['slot_type'] == 'starter').toList()
+    ..sort((a, b) => (a['position'] as int).compareTo(b['position'] as int));
 
   if (starters.length < 2) return;
 
@@ -157,13 +157,16 @@ void _checkRankingOrder(
     if (rankings[i] < rankings[i - 1]) {
       final pos = starters[i]['position'] as int;
       final prevPos = starters[i - 1]['position'] as int;
-      out.add(LineupViolation(
-        code: LineupViolationCode.rankingOrder,
-        message: 'Ranking-Reihenfolge verletzt: '
-            'Position $pos (R${rankings[i]}) ist stärker als '
-            'Position $prevPos (R${rankings[i - 1]}).',
-        slotId: starters[i]['id'] as String?,
-      ));
+      out.add(
+        LineupViolation(
+          code: LineupViolationCode.rankingOrder,
+          message:
+              'Ranking-Reihenfolge verletzt: '
+              'Position $pos (${RankingData.label(rankings[i])}) ist stärker als '
+              'Position $prevPos (${RankingData.label(rankings[i - 1])}).',
+          slotId: starters[i]['id'] as String?,
+        ),
+      );
     }
   }
 }

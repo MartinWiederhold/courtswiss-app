@@ -154,7 +154,9 @@ NOTIFY pgrst, 'reload schema';''';
 
     // ── 4. Upload with differentiated error handling ─────────
     try {
-      await _supabase.storage.from(_bucket).uploadBinary(
+      await _supabase.storage
+          .from(_bucket)
+          .uploadBinary(
             storagePath,
             bytes,
             fileOptions: const FileOptions(upsert: true),
@@ -178,10 +180,7 @@ NOTIFY pgrst, 'reload schema';''';
           e,
         );
       }
-      throw AvatarUploadException(
-        'Upload fehlgeschlagen: ${e.message}',
-        e,
-      );
+      throw AvatarUploadException('Upload fehlgeschlagen: ${e.message}', e);
     }
 
     // ── 5. Persist path in profile ──────────────────────────
@@ -207,11 +206,13 @@ NOTIFY pgrst, 'reload schema';''';
   /// Creates signed URLs for multiple storage paths in one call.
   /// Returns a map: storagePath → signedUrl.
   static Future<Map<String, String>> createSignedUrls(
-      List<String> paths) async {
+    List<String> paths,
+  ) async {
     if (paths.isEmpty) return {};
 
-    final result =
-        await _supabase.storage.from(_bucket).createSignedUrls(paths, 3600);
+    final result = await _supabase.storage
+        .from(_bucket)
+        .createSignedUrls(paths, 3600);
 
     final map = <String, String>{};
     for (final item in result) {

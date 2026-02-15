@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/event_service.dart';
+import '../theme/cs_theme.dart';
+import '../widgets/ui/ui.dart';
 import 'match_detail_screen.dart';
 
 /// Global Inbox screen – shows cs_events across all teams.
@@ -33,9 +35,7 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final events = await EventService.fetchEvents(
-        teamId: _selectedTeamId,
-      );
+      final events = await EventService.fetchEvents(teamId: _selectedTeamId);
       if (!mounted) return;
 
       // Build team filter options from all loaded events.
@@ -64,9 +64,7 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Events konnten nicht geladen werden.');
     }
   }
 
@@ -118,11 +116,7 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
         if (!mounted) return;
 
         if (match == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Match nicht verfügbar (gelöscht oder archiviert).'),
-            ),
-          );
+          CsToast.info(context, 'Match nicht verfügbar (gelöscht oder archiviert).');
         } else {
           await Navigator.push(
             context,
@@ -137,11 +131,7 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
         }
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Match nicht verfügbar.'),
-          ),
-        );
+        CsToast.error(context, 'Match nicht verfügbar.');
         debugPrint('EventInbox: match load failed: $e');
       }
     }
@@ -156,9 +146,7 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
       _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Events konnten nicht geladen werden.');
     }
   }
 
@@ -178,9 +166,9 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
   Widget build(BuildContext context) {
     final unreadCount = _events.where(EventService.isUnread).length;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Benachrichtigungen ($unreadCount)'),
+    return CsScaffoldList(
+      appBar: CsGlassAppBar(
+        title: 'Benachrichtigungen ($unreadCount)',
         actions: [
           if (unreadCount > 0)
             TextButton(
@@ -201,9 +189,10 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Team-Filter',
-                  border: OutlineInputBorder(),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
                 items: [
                   const DropdownMenuItem<String?>(
@@ -213,10 +202,7 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
                   ..._teamOptions.map(
                     (t) => DropdownMenuItem<String?>(
                       value: t.id,
-                      child: Text(
-                        t.label,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      child: Text(t.label, overflow: TextOverflow.ellipsis),
                     ),
                   ),
                 ],
@@ -230,80 +216,131 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
           // ── Event list ────────────────────────────────────────
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                    child: Column(
+                      children: List.generate(5, (_) => const CsSkeletonCard()),
+                    ),
+                  )
                 : _events.isEmpty
-                    ? const Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.notifications_none,
-                                size: 48, color: Colors.grey),
-                            SizedBox(height: 12),
-                            Text('Keine Benachrichtigungen',
-                                style: TextStyle(color: Colors.grey)),
-                          ],
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView.separated(
-                          itemCount: _events.length,
-                          separatorBuilder: (_, _) =>
-                              const Divider(height: 1),
-                          itemBuilder: (context, i) {
-                            final ev = _events[i];
-                            final isUnread = EventService.isUnread(ev);
-                            final eventType =
-                                ev['event_type'] as String? ?? '';
-                            final title = EventService.formatTitle(ev);
-                            final body = EventService.formatBody(ev);
-                            final hasMatch =
-                                EventService.getMatchId(ev) != null;
+                ? Center(
+                    child: CsEmptyState(
+                      icon: Icons.notifications_none,
+                      title: 'Keine neuen Events',
+                      subtitle: 'Sobald es Neuigkeiten gibt, siehst du sie hier.',
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                      itemCount: _events.length,
+                      itemBuilder: (context, i) {
+                        final ev = _events[i];
+                        final isUnread = EventService.isUnread(ev);
+                        final eventType = ev['event_type'] as String? ?? '';
+                        final title = EventService.formatTitle(ev);
+                        final body = EventService.formatBody(ev);
+                        final hasMatch = EventService.getMatchId(ev) != null;
 
-                            return ListTile(
-                              tileColor:
-                                  isUnread ? Colors.blue.shade50 : null,
-                              leading: Icon(
-                                EventService.eventIcon(eventType),
-                                color:
-                                    isUnread ? Colors.blue : Colors.grey,
-                              ),
-                              title: Text(
-                                title,
-                                style: TextStyle(
-                                  fontWeight: isUnread
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                ),
-                              ),
-                              subtitle: Text(
-                                '$body\n${_timeAgo(ev['created_at'] as String?)}',
-                              ),
-                              isThreeLine: true,
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (hasMatch)
-                                    const Icon(Icons.chevron_right,
-                                        size: 20, color: Colors.blue),
-                                  if (isUnread)
-                                    Container(
-                                      width: 10,
-                                      height: 10,
-                                      margin:
-                                          const EdgeInsets.only(left: 6),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.blue,
-                                        shape: BoxShape.circle,
-                                      ),
+                        return CsAnimatedEntrance.staggered(
+                          index: i,
+                          child: CsCard(
+                            accentBarColor: isUnread ? CsColors.blue : null,
+                            onTap: () => _onTap(ev),
+                            padding: const EdgeInsets.all(14),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: (isUnread
+                                            ? CsColors.blue
+                                            : CsColors.gray500)
+                                        .withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(
+                                      CsRadii.sm,
                                     ),
+                                  ),
+                                  child: Icon(
+                                    EventService.eventIcon(eventType),
+                                    color: isUnread
+                                        ? CsColors.blue
+                                        : CsColors.gray400,
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        title,
+                                        style: CsTextStyles.onDarkPrimary
+                                            .copyWith(
+                                          fontWeight: isUnread
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        body,
+                                        style: CsTextStyles.onDarkSecondary
+                                            .copyWith(fontSize: 12),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _timeAgo(
+                                          ev['created_at'] as String?,
+                                        ),
+                                        style: CsTextStyles.onDarkTertiary
+                                            .copyWith(fontSize: 11),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (hasMatch || isUnread) ...[
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    children: [
+                                      if (isUnread)
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: const BoxDecoration(
+                                            color: CsColors.blue,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                      if (hasMatch)
+                                        Padding(
+                                          padding: EdgeInsets.only(
+                                            top: isUnread ? 8 : 0,
+                                          ),
+                                          child: const Icon(
+                                            Icons.chevron_right,
+                                            size: 18,
+                                            color: CsColors.blue,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ],
-                              ),
-                              onTap: () => _onTap(ev),
-                            );
-                          },
-                        ),
-                      ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
           ),
         ],
       ),

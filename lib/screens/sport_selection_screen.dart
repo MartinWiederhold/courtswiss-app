@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/sport.dart';
+import '../theme/cs_theme.dart';
+import '../widgets/ui/ui.dart';
 
 /// Full-screen grid to pick a sport before creating a team.
 class SportSelectionScreen extends StatelessWidget {
@@ -7,36 +9,38 @@ class SportSelectionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sportart wählen'),
-      ),
+    return CsScaffold(
+      appBar: const CsGlassAppBar(title: 'Sportart wählen'),
       body: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.only(bottom: 16, left: 4),
               child: Text(
                 'Welche Sportart spielt dein Team?',
-                style: Theme.of(context).textTheme.titleMedium,
+                style: CsTextStyles.titleMedium,
               ),
             ),
             Expanded(
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.4,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 1.3,
                 ),
                 itemCount: Sport.all.length,
                 itemBuilder: (context, index) {
                   final sport = Sport.all[index];
-                  return _SportTile(
-                    sport: sport,
-                    onTap: () => Navigator.pop(context, sport.key),
+                  return CsAnimatedEntrance.staggered(
+                    index: index,
+                    child: _SportTile(
+                      sport: sport,
+                      onTap: () => Navigator.pop(context, sport.key),
+                    ),
                   );
                 },
               ),
@@ -60,6 +64,7 @@ class _SportTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       elevation: 2,
+      color: CsColors.blackCard,
       child: InkWell(
         onTap: onTap,
         child: Stack(
@@ -75,30 +80,34 @@ class _SportTile extends StatelessWidget {
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.transparent,
-                    Colors.black.withValues(alpha: 0.6),
+                    Colors.black.withValues(alpha: 0.7),
                   ],
                 ),
               ),
             ),
             // Sport icon + label
             Positioned(
-              left: 12,
-              right: 12,
-              bottom: 10,
+              left: 14,
+              right: 14,
+              bottom: 12,
               child: Row(
                 children: [
-                  Icon(sport.icon, color: Colors.white, size: 22),
-                  const SizedBox(width: 8),
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(CsRadii.sm),
+                    ),
+                    child: Icon(sport.icon, color: Colors.white, size: 19),
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       sport.label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                      style: CsTextStyles.onDarkPrimary.copyWith(
+                        fontWeight: FontWeight.w700,
                         fontSize: 15,
-                        shadows: [
-                          Shadow(blurRadius: 4, color: Colors.black54),
-                        ],
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -117,19 +126,16 @@ class _SportTile extends StatelessWidget {
     return Image.asset(
       sport.assetPath,
       fit: BoxFit.cover,
+      alignment: const Alignment(0, -0.3),
       errorBuilder: (context, error, stack) {
-        debugPrint(
-            'SPORT_ASSET_MISSING: ${sport.assetPath} err=$error');
+        debugPrint('SPORT_ASSET_MISSING: ${sport.assetPath} err=$error');
         // Fallback: gradient with sport color
         return Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                sport.color.withValues(alpha: 0.7),
-                sport.color,
-              ],
+              colors: [sport.color.withValues(alpha: 0.7), sport.color],
             ),
           ),
           child: Center(

@@ -12,8 +12,9 @@ class NotificationService {
   // ── Queries ────────────────────────────────────────────────
 
   /// Load all notifications for the current user (newest first).
-  static Future<List<Map<String, dynamic>>> getMyNotifications(
-      {int limit = 50}) async {
+  static Future<List<Map<String, dynamic>>> getMyNotifications({
+    int limit = 50,
+  }) async {
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return [];
 
@@ -41,9 +42,10 @@ class NotificationService {
 
   /// Mark a single notification as read (via RPC).
   static Future<void> markRead(String notificationId) async {
-    await _supabase.rpc('mark_notification_read', params: {
-      'p_notification_id': notificationId,
-    });
+    await _supabase.rpc(
+      'mark_notification_read',
+      params: {'p_notification_id': notificationId},
+    );
   }
 
   /// Mark all unread notifications as read (direct update, guarded by RLS).
@@ -87,10 +89,8 @@ class NotificationService {
             onInsert(record);
 
             // Local push notification
-            final title =
-                record['title'] as String? ?? formatTitle(record);
-            final body =
-                record['body'] as String? ?? formatMessage(record);
+            final title = record['title'] as String? ?? formatTitle(record);
+            final body = record['body'] as String? ?? formatMessage(record);
             if (title.isNotEmpty || body.isNotEmpty) {
               LocalNotificationService.show(
                 title: title.isNotEmpty ? title : 'CourtSwiss',

@@ -3,6 +3,41 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class MatchService {
   static final _supabase = Supabase.instance.client;
 
+  /// Lists all matches across ALL teams the current user belongs to.
+  ///
+  /// Each returned row includes the original match columns plus a joined
+  /// `team_name` field resolved from `cs_teams.name`.
+  /// Results are ordered by `match_at` ascending (next game first).
+  static Future<List<Map<String, dynamic>>> listAllMyMatches() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return [];
+
+    // 1. Fetch team IDs the user belongs to
+    final memberships = await _supabase
+        .from('cs_team_members')
+        .select('team_id')
+        .eq('user_id', user.id);
+
+    final teamIds =
+        (memberships as List).map((m) => m['team_id'] as String).toList();
+    if (teamIds.isEmpty) return [];
+
+    // 2. Fetch matches for those teams, joined with team name
+    final rows = await _supabase
+        .from('cs_matches')
+        .select('*, cs_teams!inner(name)')
+        .inFilter('team_id', teamIds)
+        .order('match_at', ascending: true);
+
+    // Flatten the joined team name into each row for easy access
+    return List<Map<String, dynamic>>.from(rows).map((row) {
+      final team = row['cs_teams'];
+      final teamName =
+          (team is Map<String, dynamic>) ? team['name'] as String? : null;
+      return {...row, 'team_name': teamName ?? '–'};
+    }).toList();
+  }
+
   /// Lists all matches for a team, ordered by date ascending.
   static Future<List<Map<String, dynamic>>> listMatches(String teamId) async {
     final rows = await _supabase
@@ -38,7 +73,8 @@ class MatchService {
 
   /// Loads all availability rows for a single match.
   static Future<List<Map<String, dynamic>>> listAvailability(
-      String matchId) async {
+    String matchId,
+  ) async {
     final rows = await _supabase
         .from('cs_match_availability')
         .select()
@@ -48,7 +84,8 @@ class MatchService {
 
   /// Loads availability rows for multiple matches in one call.
   static Future<List<Map<String, dynamic>>> listAvailabilityBatch(
-      List<String> matchIds) async {
+    List<String> matchIds,
+  ) async {
     if (matchIds.isEmpty) return [];
     final rows = await _supabase
         .from('cs_match_availability')
@@ -59,7 +96,9 @@ class MatchService {
 
   /// Updates an existing match (only admins via RLS).
   static Future<void> updateMatch(
-      String matchId, Map<String, dynamic> patch) async {
+    String matchId,
+    Map<String, dynamic> patch,
+  ) async {
     await _supabase.from('cs_matches').update(patch).eq('id', matchId);
   }
 
@@ -80,15 +119,12 @@ class MatchService {
     // ignore: avoid_print
     print('SET_AVAILABILITY userId=$uid matchId=$matchId status=$status');
 
-    await _supabase.from('cs_match_availability').upsert(
-      {
-        'match_id': matchId,
-        'user_id': uid,
-        'status': status,
-        'comment': comment,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      onConflict: 'match_id,user_id',
-    );
+    await _supabase.from('cs_match_availability').upsert({
+      'match_id': matchId,
+      'user_id': uid,
+      'status': status,
+      'comment': comment,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'match_id,user_id');
   }
 }

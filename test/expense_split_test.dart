@@ -142,8 +142,7 @@ void main() {
       expect(expense.perPersonDouble, closeTo(15.0, 0.01));
 
       // Verify the payer's share is marked paid
-      final payerShare =
-          expense.shares.firstWhere((s) => s.userId == payerUid);
+      final payerShare = expense.shares.firstWhere((s) => s.userId == payerUid);
       expect(payerShare.isPaid, true);
       expect(payerShare.paidAt, isNotNull);
     });

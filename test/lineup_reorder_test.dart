@@ -5,10 +5,10 @@ import 'package:swisscourt/utils/lineup_reorder.dart';
 
 /// Build a minimal slot map for testing.
 Map<String, dynamic> _slot(String id, String type, int pos) => {
-      'id': id,
-      'slot_type': type,
-      'position': pos,
-    };
+  'id': id,
+  'slot_type': type,
+  'position': pos,
+};
 
 /// Extract ids in order from a list of slot maps.
 List<String> _ids(List<Map<String, dynamic>> items) =>
@@ -22,19 +22,19 @@ List<String> _typePos(List<Map<String, dynamic>> items) =>
 
 /// 5-item list: 3 starters + 2 reserves.
 List<Map<String, dynamic>> _fiveItems() => [
-      _slot('A', 'starter', 1),
-      _slot('B', 'starter', 2),
-      _slot('C', 'starter', 3),
-      _slot('D', 'reserve', 1),
-      _slot('E', 'reserve', 2),
-    ];
+  _slot('A', 'starter', 1),
+  _slot('B', 'starter', 2),
+  _slot('C', 'starter', 3),
+  _slot('D', 'reserve', 1),
+  _slot('E', 'reserve', 2),
+];
 
 /// 3-item list: 2 starters + 1 reserve.
 List<Map<String, dynamic>> _threeItems() => [
-      _slot('A', 'starter', 1),
-      _slot('B', 'starter', 2),
-      _slot('C', 'reserve', 1),
-    ];
+  _slot('A', 'starter', 1),
+  _slot('B', 'starter', 2),
+  _slot('C', 'reserve', 1),
+];
 
 void main() {
   // ═════════════════════════════════════════════════════════════
@@ -161,12 +161,7 @@ void main() {
       final items = _threeItems();
       final originalA = Map<String, dynamic>.from(items[0]);
 
-      applyReorder(
-        items: items,
-        oldIndex: 2,
-        newIndex: 0,
-        starterCount: 2,
-      );
+      applyReorder(items: items, oldIndex: 2, newIndex: 0, starterCount: 2);
 
       // Original list and maps must be unchanged
       expect(items[0]['id'], originalA['id']);
@@ -304,7 +299,11 @@ void main() {
   group('moveStepToRpcParams', () {
     test('maps MoveStep to correct RPC params', () {
       const step = MoveStep(
-          fromType: 'starter', fromPos: 1, toType: 'reserve', toPos: 2);
+        fromType: 'starter',
+        fromPos: 1,
+        toType: 'reserve',
+        toPos: 2,
+      );
       final params = moveStepToRpcParams(matchId: 'match-1', step: step);
 
       expect(params, {
@@ -318,13 +317,21 @@ void main() {
 
     test('same-type same-pos (no-op) returns null', () {
       const step = MoveStep(
-          fromType: 'starter', fromPos: 1, toType: 'starter', toPos: 1);
+        fromType: 'starter',
+        fromPos: 1,
+        toType: 'starter',
+        toPos: 1,
+      );
       expect(moveStepToRpcParams(matchId: 'match-1', step: step), isNull);
     });
 
     test('same-type different-pos maps correctly', () {
       const step = MoveStep(
-          fromType: 'starter', fromPos: 1, toType: 'starter', toPos: 3);
+        fromType: 'starter',
+        fromPos: 1,
+        toType: 'starter',
+        toPos: 3,
+      );
       final params = moveStepToRpcParams(matchId: 'match-2', step: step);
 
       expect(params, {
@@ -338,7 +345,11 @@ void main() {
 
     test('cross-boundary move maps correctly', () {
       const step = MoveStep(
-          fromType: 'reserve', fromPos: 2, toType: 'starter', toPos: 1);
+        fromType: 'reserve',
+        fromPos: 2,
+        toType: 'starter',
+        toPos: 1,
+      );
       final params = moveStepToRpcParams(matchId: 'match-3', step: step);
 
       expect(params, {
@@ -397,21 +408,23 @@ void main() {
       expect(params['p_to_pos'], 2);
     });
 
-    test('no-op drag → computeMoveSteps returns empty → no RPC call needed',
-        () {
-      final before = _threeItems();
-      // Same items, no actual move
-      final after = applyReorder(
-        items: before,
-        oldIndex: 1,
-        newIndex: 2, // adjustedNew = 1 == oldIndex → no-op
-        starterCount: 2,
-      );
+    test(
+      'no-op drag → computeMoveSteps returns empty → no RPC call needed',
+      () {
+        final before = _threeItems();
+        // Same items, no actual move
+        final after = applyReorder(
+          items: before,
+          oldIndex: 1,
+          newIndex: 2, // adjustedNew = 1 == oldIndex → no-op
+          starterCount: 2,
+        );
 
-      final steps = computeMoveSteps(before: before, after: after);
-      expect(steps, isEmpty);
-      // No moveStepToRpcParams call needed → no server request
-    });
+        final steps = computeMoveSteps(before: before, after: after);
+        expect(steps, isEmpty);
+        // No moveStepToRpcParams call needed → no server request
+      },
+    );
   });
 
   // ═════════════════════════════════════════════════════════════
@@ -439,11 +452,23 @@ void main() {
   group('MoveStep', () {
     test('equality and hashCode', () {
       const a = MoveStep(
-          fromType: 'starter', fromPos: 1, toType: 'reserve', toPos: 2);
+        fromType: 'starter',
+        fromPos: 1,
+        toType: 'reserve',
+        toPos: 2,
+      );
       const b = MoveStep(
-          fromType: 'starter', fromPos: 1, toType: 'reserve', toPos: 2);
+        fromType: 'starter',
+        fromPos: 1,
+        toType: 'reserve',
+        toPos: 2,
+      );
       const c = MoveStep(
-          fromType: 'starter', fromPos: 1, toType: 'starter', toPos: 2);
+        fromType: 'starter',
+        fromPos: 1,
+        toType: 'starter',
+        toPos: 2,
+      );
 
       expect(a, equals(b));
       expect(a.hashCode, b.hashCode);
@@ -452,7 +477,11 @@ void main() {
 
     test('toString', () {
       const step = MoveStep(
-          fromType: 'starter', fromPos: 1, toType: 'reserve', toPos: 3);
+        fromType: 'starter',
+        fromPos: 1,
+        toType: 'reserve',
+        toPos: 3,
+      );
       expect(step.toString(), 'MoveStep(starter#1 → reserve#3)');
     });
   });

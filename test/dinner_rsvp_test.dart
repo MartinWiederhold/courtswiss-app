@@ -25,61 +25,43 @@ void main() {
       expect(rsvp.createdAt, DateTime.utc(2026, 2, 12, 9));
     });
 
-    test('parses a map without optional fields (note null, timestamps null)', () {
-      final map = {
-        'id': 'abc',
-        'match_id': 'match',
-        'user_id': 'user',
-        'status': 'no',
-      };
+    test(
+      'parses a map without optional fields (note null, timestamps null)',
+      () {
+        final map = {
+          'id': 'abc',
+          'match_id': 'match',
+          'user_id': 'user',
+          'status': 'no',
+        };
 
-      final rsvp = DinnerRsvp.fromMap(map);
+        final rsvp = DinnerRsvp.fromMap(map);
 
-      expect(rsvp.id, 'abc');
-      expect(rsvp.status, 'no');
-      expect(rsvp.note, isNull);
-      // timestamps fallback to DateTime.now() – just verify they're reasonable
-      expect(rsvp.updatedAt.year, greaterThanOrEqualTo(2026));
-      expect(rsvp.createdAt.year, greaterThanOrEqualTo(2026));
-    });
+        expect(rsvp.id, 'abc');
+        expect(rsvp.status, 'no');
+        expect(rsvp.note, isNull);
+        // timestamps fallback to DateTime.now() – just verify they're reasonable
+        expect(rsvp.updatedAt.year, greaterThanOrEqualTo(2026));
+        expect(rsvp.createdAt.year, greaterThanOrEqualTo(2026));
+      },
+    );
 
     test('throws FormatException when id is missing', () {
-      final map = {
-        'match_id': 'match',
-        'user_id': 'user',
-        'status': 'yes',
-      };
+      final map = {'match_id': 'match', 'user_id': 'user', 'status': 'yes'};
 
-      expect(
-        () => DinnerRsvp.fromMap(map),
-        throwsA(isA<FormatException>()),
-      );
+      expect(() => DinnerRsvp.fromMap(map), throwsA(isA<FormatException>()));
     });
 
     test('throws FormatException when user_id is missing', () {
-      final map = {
-        'id': 'abc',
-        'match_id': 'match',
-        'status': 'yes',
-      };
+      final map = {'id': 'abc', 'match_id': 'match', 'status': 'yes'};
 
-      expect(
-        () => DinnerRsvp.fromMap(map),
-        throwsA(isA<FormatException>()),
-      );
+      expect(() => DinnerRsvp.fromMap(map), throwsA(isA<FormatException>()));
     });
 
     test('throws FormatException when status is missing', () {
-      final map = {
-        'id': 'abc',
-        'match_id': 'match',
-        'user_id': 'user',
-      };
+      final map = {'id': 'abc', 'match_id': 'match', 'user_id': 'user'};
 
-      expect(
-        () => DinnerRsvp.fromMap(map),
-        throwsA(isA<FormatException>()),
-      );
+      expect(() => DinnerRsvp.fromMap(map), throwsA(isA<FormatException>()));
     });
 
     test('throws FormatException with multiple missing fields', () {
@@ -99,11 +81,11 @@ void main() {
 
     test('statusEmoji returns correct emoji', () {
       DinnerRsvp make(String s) => DinnerRsvp.fromMap({
-            'id': '1',
-            'match_id': 'm',
-            'user_id': 'u',
-            'status': s,
-          });
+        'id': '1',
+        'match_id': 'm',
+        'user_id': 'u',
+        'status': s,
+      });
 
       expect(make('yes').statusEmoji, '✅');
       expect(make('no').statusEmoji, '❌');
@@ -113,11 +95,11 @@ void main() {
 
     test('statusLabel returns correct German label', () {
       DinnerRsvp make(String s) => DinnerRsvp.fromMap({
-            'id': '1',
-            'match_id': 'm',
-            'user_id': 'u',
-            'status': s,
-          });
+        'id': '1',
+        'match_id': 'm',
+        'user_id': 'u',
+        'status': s,
+      });
 
       expect(make('yes').statusLabel, 'Ja');
       expect(make('no').statusLabel, 'Nein');

@@ -25,7 +25,9 @@ class RosterService {
   /// Set current user's roster status (confirm / decline) via RPC.
   /// If declining as starter → RPC auto-promotes first substitute.
   static Future<Map<String, dynamic>> setMyStatus(
-      String matchId, String status) async {
+    String matchId,
+    String status,
+  ) async {
     final result = await _supabase.rpc(
       'set_roster_status',
       params: {'p_match_id': matchId, 'p_status': status},

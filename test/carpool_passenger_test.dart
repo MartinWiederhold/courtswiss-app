@@ -20,10 +20,7 @@ void main() {
     });
 
     test('parses row with user_id (legacy/alias)', () {
-      final map = {
-        'offer_id': 'offer-aaa',
-        'user_id': 'user-ccc',
-      };
+      final map = {'offer_id': 'offer-aaa', 'user_id': 'user-ccc'};
 
       final p = CarpoolPassenger.fromMap(map);
 
@@ -56,9 +53,7 @@ void main() {
     });
 
     test('throws FormatException when offer_id is missing', () {
-      final map = {
-        'passenger_user_id': 'user-bbb',
-      };
+      final map = {'passenger_user_id': 'user-bbb'};
 
       expect(
         () => CarpoolPassenger.fromMap(map),
@@ -67,9 +62,7 @@ void main() {
     });
 
     test('throws FormatException when both user id fields are missing', () {
-      final map = {
-        'offer_id': 'offer-aaa',
-      };
+      final map = {'offer_id': 'offer-aaa'};
 
       expect(
         () => CarpoolPassenger.fromMap(map),

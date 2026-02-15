@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/team_player_service.dart';
+import '../theme/cs_theme.dart';
+import '../widgets/ui/ui.dart';
 
 /// Screen shown after a player joins a team via invite link.
 /// Displays unclaimed player slots – user picks which one they are.
@@ -7,11 +9,7 @@ class ClaimScreen extends StatefulWidget {
   final String teamId;
   final String teamName;
 
-  const ClaimScreen({
-    super.key,
-    required this.teamId,
-    required this.teamName,
-  });
+  const ClaimScreen({super.key, required this.teamId, required this.teamName});
 
   @override
   State<ClaimScreen> createState() => _ClaimScreenState();
@@ -32,8 +30,9 @@ class _ClaimScreenState extends State<ClaimScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final players =
-          await TeamPlayerService.listUnclaimedPlayers(widget.teamId);
+      final players = await TeamPlayerService.listUnclaimedPlayers(
+        widget.teamId,
+      );
       if (!mounted) return;
       setState(() {
         _players = players;
@@ -42,9 +41,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
@@ -52,8 +49,8 @@ class _ClaimScreenState extends State<ClaimScreen> {
     if (_search.isEmpty) return _players;
     final q = _search.toLowerCase();
     return _players.where((p) {
-      final name =
-          '${p['first_name'] ?? ''} ${p['last_name'] ?? ''}'.toLowerCase();
+      final name = '${p['first_name'] ?? ''} ${p['last_name'] ?? ''}'
+          .toLowerCase();
       return name.contains(q);
     }).toList();
   }
@@ -63,21 +60,29 @@ class _ClaimScreenState extends State<ClaimScreen> {
     final ranking = TeamPlayerService.rankingLabel(player);
     final label = ranking.isNotEmpty ? '$name · $ranking' : name;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Spieler bestätigen'),
-        content: Text('Bist du "$label"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Nein'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Ja, das bin ich'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (ctx) => CsBottomSheetForm(
+        title: 'Spieler bestätigen',
+        ctaLabel: 'Ja, das bin ich',
+        onCta: () => Navigator.pop(ctx, true),
+        secondaryLabel: 'Abbrechen',
+        onSecondary: () => Navigator.pop(ctx, false),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.person, size: 40, color: CsColors.blue),
+            const SizedBox(height: 12),
+            Text(
+              'Bist du "$label"?',
+              style: CsTextStyles.bodySmall.copyWith(fontSize: 15),
+            ),
+          ],
+        ),
       ),
     );
     if (confirmed != true || !mounted) return;
@@ -91,18 +96,14 @@ class _ClaimScreenState extends State<ClaimScreen> {
       if (!mounted) return;
 
       final fullName = result['full_name'] as String? ?? name;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ Willkommen, $fullName!')),
-      );
+      CsToast.success(context, 'Willkommen, $fullName!');
 
       // Pop back with success = true
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _claiming = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
@@ -116,10 +117,10 @@ class _ClaimScreenState extends State<ClaimScreen> {
     final filtered = _filteredPlayers;
 
     return PopScope(
-      canPop: false, // blocking – must pick or skip
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Wer bist du?'),
+      canPop: false,
+      child: CsScaffoldList(
+        appBar: CsGlassAppBar(
+          title: 'Wer bist du?',
           automaticallyImplyLeading: false,
           actions: [
             TextButton(
@@ -129,32 +130,60 @@ class _ClaimScreenState extends State<ClaimScreen> {
           ],
         ),
         body: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                child: Column(
+                  children: [
+                    const CsSkeletonCard(),
+                    const SizedBox(height: 12),
+                    ...List.generate(4, (_) => const CsSkeletonCard()),
+                  ],
+                ),
+              )
             : Column(
                 children: [
-                  // ── Team info ──
+                  // ── Team info card ──
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                    child: Text(
-                      'Team: ${widget.teamName}',
-                      style: Theme.of(context).textTheme.titleMedium,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: CsCard(
+                      accentBarColor: CsColors.lime,
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.group,
+                            color: CsColors.lime,
+                            size: 32,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            widget.teamName,
+                            style: CsTextStyles.onDarkPrimary.copyWith(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Wähle deinen Namen aus der Liste,\n'
+                            'damit das Team dich zuordnen kann.',
+                            textAlign: TextAlign.center,
+                            style: CsTextStyles.onDarkSecondary.copyWith(
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Wähle deinen Namen aus der Liste,\n'
-                      'damit das Team dich zuordnen kann.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
 
                   // ── Search ──
                   if (_players.length > 5)
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       child: TextField(
                         decoration: const InputDecoration(
                           prefixIcon: Icon(Icons.search),
@@ -171,33 +200,32 @@ class _ClaimScreenState extends State<ClaimScreen> {
                       child: LinearProgressIndicator(),
                     ),
 
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
 
                   // ── Player list ──
                   if (_players.isEmpty)
-                    const Expanded(
+                    Expanded(
                       child: Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(32),
-                          child: Text(
-                            'Keine verfügbaren Spieler-Slots.\n\n'
-                            'Dein Captain hat noch keine Spieler angelegt,\n'
-                            'oder alle Slots sind bereits vergeben.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey),
-                          ),
+                        child: CsEmptyState(
+                          icon: Icons.person_off,
+                          title: 'Kein freier Platz',
+                          subtitle:
+                              'Dein Captain hat noch keine Spieler angelegt\n'
+                              'oder alle Plätze sind bereits vergeben.',
                         ),
                       ),
                     )
                   else
                     Expanded(
-                      child: ListView.separated(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         itemCount: filtered.length,
-                        separatorBuilder: (context, index) =>
-                            const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final player = filtered[index];
-                          return _buildPlayerTile(player);
+                          return CsAnimatedEntrance.staggered(
+                            index: index,
+                            child: _buildPlayerTile(player),
+                          );
                         },
                       ),
                     ),
@@ -211,21 +239,49 @@ class _ClaimScreenState extends State<ClaimScreen> {
     final name = TeamPlayerService.playerDisplayName(player);
     final ranking = TeamPlayerService.rankingLabel(player);
 
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: Colors.blue.shade50,
-        child: Text(
-          _initials(player),
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.blue.shade700,
-          ),
-        ),
-      ),
-      title: Text(name),
-      subtitle: ranking.isNotEmpty ? Text(ranking) : null,
-      trailing: const Icon(Icons.chevron_right),
+    return CsCard(
       onTap: _claiming ? null : () => _claim(player),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: CsColors.blue.withValues(alpha: 0.15),
+            child: Text(
+              _initials(player),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: CsColors.blue,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: CsTextStyles.onDarkPrimary.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (ranking.isNotEmpty)
+                  Text(
+                    ranking,
+                    style: CsTextStyles.onDarkTertiary.copyWith(fontSize: 12),
+                  ),
+              ],
+            ),
+          ),
+          const Icon(
+            Icons.chevron_right,
+            color: CsColors.lime,
+            size: 20,
+          ),
+        ],
+      ),
     );
   }
 

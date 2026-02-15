@@ -12,8 +12,10 @@ import 'local_notification_service.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Minimal: just log. Heavy work (navigation) is not possible here.
-  debugPrint('PushService [background] ${message.messageId} '
-      'data=${message.data}');
+  debugPrint(
+    'PushService [background] ${message.messageId} '
+    'data=${message.data}',
+  );
 }
 
 /// Global navigator key – set on MaterialApp so PushService can navigate
@@ -68,7 +70,8 @@ class PushService {
         provisional: false,
       );
       debugPrint(
-          'PushService permission: ${settings.authorizationStatus.name}');
+        'PushService permission: ${settings.authorizationStatus.name}',
+      );
     } catch (e) {
       debugPrint('PushService requestPermission error: $e');
     }
@@ -97,8 +100,9 @@ class PushService {
 
     // ── 4. Listen for auth changes → re-register token ───────────
     _authSub?.cancel();
-    _authSub = Supabase.instance.client.auth.onAuthStateChange
-        .listen(_onAuthStateChanged);
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen(
+      _onAuthStateChanged,
+    );
 
     // ── 5. Foreground messages → show local notification ─────────
     _fgSub?.cancel();
@@ -148,15 +152,19 @@ class PushService {
 
     final token = lastToken;
     if (token == null || token.isEmpty) {
-      debugPrint('PushService [auth] user changed to '
-          '${newUserId.substring(0, 8)}… but no FCM token yet');
+      debugPrint(
+        'PushService [auth] user changed to '
+        '${newUserId.substring(0, 8)}… but no FCM token yet',
+      );
       return;
     }
 
     // ignore: avoid_print
-    print('PushService [auth] user changed: '
-        '${_lastRegisteredUserId?.substring(0, 8) ?? 'null'}… → '
-        '${newUserId.substring(0, 8)}… – re-registering token');
+    print(
+      'PushService [auth] user changed: '
+      '${_lastRegisteredUserId?.substring(0, 8) ?? 'null'}… → '
+      '${newUserId.substring(0, 8)}… – re-registering token',
+    );
 
     _registerTokenForCurrentUser(token);
   }
@@ -178,8 +186,10 @@ class PushService {
 
     final tokenPrefix = token.length > 12 ? token.substring(0, 12) : token;
     // ignore: avoid_print
-    print('PushService REGISTER userId=${userId.substring(0, 8)}… '
-        'token=$tokenPrefix…');
+    print(
+      'PushService REGISTER userId=${userId.substring(0, 8)}… '
+      'token=$tokenPrefix…',
+    );
 
     try {
       await DeviceTokenService.registerToken(
@@ -198,9 +208,11 @@ class PushService {
 
   /// Show a local notification for foreground FCM messages.
   static void _handleForegroundMessage(RemoteMessage message) {
-    debugPrint('PushService [foreground] ${message.messageId} '
-        'title=${message.notification?.title} '
-        'data=${message.data}');
+    debugPrint(
+      'PushService [foreground] ${message.messageId} '
+      'title=${message.notification?.title} '
+      'data=${message.data}',
+    );
 
     final notification = message.notification;
     if (notification != null) {
@@ -235,8 +247,10 @@ class PushService {
 
     final nav = navigatorKey.currentState;
     if (nav == null) {
-      debugPrint('PushService: navigatorKey not available, '
-          'cannot navigate to match $matchId');
+      debugPrint(
+        'PushService: navigatorKey not available, '
+        'cannot navigate to match $matchId',
+      );
       return;
     }
 
@@ -254,11 +268,8 @@ class PushService {
 
       nav.push(
         MaterialPageRoute(
-          builder: (_) => MatchDetailScreen(
-            matchId: matchId,
-            teamId: teamId,
-            match: match,
-          ),
+          builder: (_) =>
+              MatchDetailScreen(matchId: matchId, teamId: teamId, match: match),
         ),
       );
     } catch (e) {

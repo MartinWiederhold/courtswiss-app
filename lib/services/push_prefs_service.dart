@@ -52,28 +52,46 @@ class PushPrefsService {
   }
 
   /// Save notification prefs (upsert).
+  /// Throws [PushPrefsException] with a user-friendly message on failure.
   static Future<void> setPrefs({
     String? teamId,
     required bool pushEnabled,
     required List<String> typesDisabled,
   }) async {
-    await _supabase.rpc('cs_set_notification_prefs', params: {
-      'p_team_id': teamId,
-      'p_push_enabled': pushEnabled,
-      'p_types_disabled': typesDisabled,
-    });
+    try {
+      await _supabase.rpc(
+        'cs_set_notification_prefs',
+        params: {
+          'p_team_id': teamId,
+          'p_push_enabled': pushEnabled,
+          'p_types_disabled': typesDisabled,
+        },
+      );
+    } catch (e) {
+      debugPrint('PushPrefsService.setPrefs error: $e');
+      throw const PushPrefsException('Speichern fehlgeschlagen');
+    }
   }
 
   // ── Internal ──────────────────────────────────────────────────
 
   static Map<String, dynamic> _defaults() => {
-        'push_enabled': true,
-        'types_disabled': <String>[],
-      };
+    'push_enabled': true,
+    'types_disabled': <String>[],
+  };
 
   /// Parse the types_disabled field which may come as List or JSON array.
   static List<String> _parseTypesDisabled(dynamic raw) {
     if (raw is List) return raw.map((e) => e.toString()).toList();
     return <String>[];
   }
+}
+
+/// Clean exception type so the UI never shows raw PostgREST errors.
+class PushPrefsException implements Exception {
+  final String message;
+  const PushPrefsException(this.message);
+
+  @override
+  String toString() => message;
 }

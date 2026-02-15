@@ -32,8 +32,7 @@ class Expense {
   double get amountDouble => amountCents / 100.0;
 
   /// Formatted amount string (e.g. "CHF 45.50").
-  String get amountFormatted =>
-      '$currency ${amountDouble.toStringAsFixed(2)}';
+  String get amountFormatted => '$currency ${amountDouble.toStringAsFixed(2)}';
 
   /// Per-person share (based on shares list).
   double get perPersonDouble =>
@@ -53,15 +52,15 @@ class Expense {
   int get openCount => shares.where((s) => !s.isPaid).length;
 
   /// Total cents already paid.
-  int get paidCents =>
-      shares.where((s) => s.isPaid).fold<int>(0, (sum, s) => sum + s.shareCents);
+  int get paidCents => shares
+      .where((s) => s.isPaid)
+      .fold<int>(0, (sum, s) => sum + s.shareCents);
 
   /// Total cents still open.
   int get openCents => amountCents - paidCents;
 
   /// Parse a Supabase row into an [Expense].
-  factory Expense.fromMap(Map<String, dynamic> map,
-      {String paidByName = '?'}) {
+  factory Expense.fromMap(Map<String, dynamic> map, {String paidByName = '?'}) {
     final id = map['id'];
     final matchId = map['match_id'];
     final teamId = map['team_id'];
@@ -171,9 +170,7 @@ class ExpenseShare {
         'ExpenseShare.fromMap: NULL in required fields $missing. '
         'Row keys: ${map.keys.toList()}',
       );
-      throw FormatException(
-        'ExpenseShare: Pflichtfelder fehlen: $missing',
-      );
+      throw FormatException('ExpenseShare: Pflichtfelder fehlen: $missing');
     }
 
     final createdAtRaw = map['created_at'];

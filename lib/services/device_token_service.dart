@@ -56,16 +56,21 @@ class DeviceTokenService {
 
     final tokenPrefix = token.length > 12 ? token.substring(0, 12) : token;
     // ignore: avoid_print
-    print('DeviceTokenService UPSERT uid=${uid.substring(0, 8)}… '
-        'device=$deviceId token=$tokenPrefix… platform=$plat');
+    print(
+      'DeviceTokenService UPSERT uid=${uid.substring(0, 8)}… '
+      'device=$deviceId token=$tokenPrefix… platform=$plat',
+    );
 
     try {
-      await _supabase.rpc('cs_upsert_device_token', params: {
-        'p_platform': plat,
-        'p_token': token,
-        'p_device_id': deviceId,
-        'p_enabled': enabled,
-      });
+      await _supabase.rpc(
+        'cs_upsert_device_token',
+        params: {
+          'p_platform': plat,
+          'p_token': token,
+          'p_device_id': deviceId,
+          'p_enabled': enabled,
+        },
+      );
     } catch (e) {
       debugPrint('DeviceTokenService.registerToken error: $e');
       rethrow;
@@ -76,12 +81,15 @@ class DeviceTokenService {
   static Future<void> disableCurrentDevice() async {
     final deviceId = await getOrCreateDeviceId();
     try {
-      await _supabase.rpc('cs_upsert_device_token', params: {
-        'p_platform': currentPlatform,
-        'p_token': '', // empty token – device disabled
-        'p_device_id': deviceId,
-        'p_enabled': false,
-      });
+      await _supabase.rpc(
+        'cs_upsert_device_token',
+        params: {
+          'p_platform': currentPlatform,
+          'p_token': '', // empty token – device disabled
+          'p_device_id': deviceId,
+          'p_enabled': false,
+        },
+      );
     } catch (e) {
       debugPrint('DeviceTokenService.disableCurrentDevice error: $e');
     }

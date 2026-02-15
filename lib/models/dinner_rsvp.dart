@@ -38,9 +38,7 @@ class DinnerRsvp {
         'DinnerRsvp.fromMap: NULL in required fields $missing. '
         'Row keys: ${map.keys.toList()}',
       );
-      throw FormatException(
-        'DinnerRsvp: Pflichtfelder fehlen: $missing',
-      );
+      throw FormatException('Unvollständige Daten: $missing');
     }
 
     DateTime updatedAt;
@@ -88,13 +86,13 @@ class DinnerRsvp {
   String get statusLabel {
     switch (status) {
       case 'yes':
-        return 'Ja';
+        return 'Zugesagt';
       case 'no':
-        return 'Nein';
+        return 'Abgesagt';
       case 'maybe':
-        return 'Vielleicht';
+        return 'Unsicher';
       default:
-        return 'Unbekannt';
+        return 'Keine Antwort';
     }
   }
 }

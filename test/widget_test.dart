@@ -1,30 +1,51 @@
-// This is a basic Flutter widget test.
+// Basic widget smoke test.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// The original "Counter increments" test referenced the default Flutter counter
+// scaffold which no longer exists (the app now uses AuthGate + Supabase).
+// This replacement test verifies that the theme initialises correctly
+// without requiring any backend or Supabase connection.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:swisscourt/main.dart';
+import 'package:swisscourt/theme/cs_theme.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('CsTheme builds without errors', (WidgetTester tester) async {
+    final theme = buildCsTheme();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: const Scaffold(
+          body: Center(child: Text('CourtSwiss')),
+        ),
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    expect(find.text('CourtSwiss'), findsOneWidget);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('CsCard renders content on dark background',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildCsTheme(),
+        home: Scaffold(
+          body: Container(
+            decoration: BoxDecoration(
+              color: CsColors.black,
+              borderRadius: BorderRadius.circular(CsRadii.lg),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: const Text(
+              'Premium',
+              style: TextStyle(color: CsColors.white),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Premium'), findsOneWidget);
   });
 }

@@ -37,16 +37,17 @@ class CarpoolOffer {
   bool get isFull => seatsAvailable <= 0;
 
   /// Check whether a specific user is a passenger in this offer.
-  bool hasPassenger(String userId) =>
-      passengers.any((p) => p.userId == userId);
+  bool hasPassenger(String userId) => passengers.any((p) => p.userId == userId);
 
   /// Parse a Supabase row into a [CarpoolOffer].
   ///
   /// Required fields (id, match_id, team_id, driver_user_id) are validated.
   /// If any required field is null, a [FormatException] is thrown with
   /// diagnostic info (column keys only, no sensitive data).
-  factory CarpoolOffer.fromMap(Map<String, dynamic> map,
-      {String driverName = '?'}) {
+  factory CarpoolOffer.fromMap(
+    Map<String, dynamic> map, {
+    String driverName = '?',
+  }) {
     // ── Validate required fields ──
     final id = map['id'];
     final matchId = map['match_id'];
@@ -66,9 +67,7 @@ class CarpoolOffer {
         'row snippet: {id: $id, match_id: $matchId, '
         'team_id: $teamId, driver_user_id: $driverUserId}',
       );
-      throw FormatException(
-        'CarpoolOffer: Pflichtfelder fehlen: $missing',
-      );
+      throw FormatException('CarpoolOffer: Pflichtfelder fehlen: $missing');
     }
 
     // ── Parse passengers (nullable embed) ──
@@ -159,14 +158,12 @@ class CarpoolPassenger {
         'CarpoolPassenger.fromMap: NULL in required fields $missing. '
         'Row keys: ${map.keys.toList()}',
       );
-      throw FormatException(
-        'CarpoolPassenger: Pflichtfelder fehlen: $missing',
-      );
+      throw FormatException('CarpoolPassenger: Pflichtfelder fehlen: $missing');
     }
 
     // id is optional – generate synthetic if absent
-    final id = map['id']?.toString() ??
-        '${offerId.toString()}_${userId.toString()}';
+    final id =
+        map['id']?.toString() ?? '${offerId.toString()}_${userId.toString()}';
 
     final createdAtRaw = map['created_at'];
     DateTime createdAt;

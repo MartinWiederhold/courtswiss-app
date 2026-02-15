@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import '../models/ranking_data.dart';
 import '../models/sport.dart';
 import '../services/invite_service.dart';
 import '../services/member_service.dart';
@@ -9,6 +10,9 @@ import '../services/avatar_service.dart';
 import '../services/match_service.dart';
 import '../services/notification_service.dart';
 import '../services/team_player_service.dart';
+import '../theme/cs_theme.dart';
+import '../widgets/ranking_selector.dart';
+import '../widgets/ui/ui.dart';
 import 'claim_screen.dart';
 import 'create_match_screen.dart';
 import 'match_detail_screen.dart';
@@ -18,11 +22,7 @@ class TeamDetailScreen extends StatefulWidget {
   final String teamId;
   final Map<String, dynamic> team;
 
-  const TeamDetailScreen({
-    super.key,
-    required this.teamId,
-    required this.team,
-  });
+  const TeamDetailScreen({super.key, required this.teamId, required this.team});
 
   @override
   State<TeamDetailScreen> createState() => _TeamDetailScreenState();
@@ -30,6 +30,10 @@ class TeamDetailScreen extends StatefulWidget {
 
 class _TeamDetailScreenState extends State<TeamDetailScreen> {
   static final _supabase = Supabase.instance.client;
+
+  // ── Tab state ──
+  int _tabIndex = 0;
+  static const _tabLabels = ['Übersicht', 'Team', 'Spiele'];
 
   bool _loading = true;
   String? _error;
@@ -61,8 +65,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return false;
     if (widget.team['created_by'] == uid) return true;
-    return _members.any(
-        (m) => m['user_id'] == uid && m['role'] == 'captain');
+    return _members.any((m) => m['user_id'] == uid && m['role'] == 'captain');
   }
 
   @override
@@ -78,8 +81,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       _loadMatches(),
       _loadUnreadCount(),
     ]);
-    // Resolve avatars AFTER all parallel loads complete so that
-    // both _members and _playerSlots (claimed_by) are available.
     await _resolveAvatarUrls();
   }
 
@@ -119,91 +120,195 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   Future<void> _addPlayerSlotDialog() async {
     final firstCtrl = TextEditingController();
     final lastCtrl = TextEditingController();
-    final rankCtrl = TextEditingController();
+    String selectedCountry = 'CH';
+    int? selectedRanking;
+    String? rankingError;
     bool saving = false;
 
-    await showDialog<void>(
+    await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setStateDialog) => AlertDialog(
-          title: const Text('Spieler hinzufügen'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: firstCtrl,
-                decoration: const InputDecoration(labelText: 'Vorname *'),
-                textCapitalization: TextCapitalization.words,
-                autofocus: true,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: lastCtrl,
-                decoration: const InputDecoration(labelText: 'Nachname *'),
-                textCapitalization: TextCapitalization.words,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: rankCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Ranking (z.B. 7)',
-                  hintText: 'optional',
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              if (saving) ...[
-                const SizedBox(height: 12),
-                const LinearProgressIndicator(),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: saving ? null : () => Navigator.pop(ctx),
-              child: const Text('Abbrechen'),
-            ),
-            ElevatedButton(
-              onPressed: saving
-                  ? null
-                  : () async {
-                      final first = firstCtrl.text.trim();
-                      final last = lastCtrl.text.trim();
-                      if (first.isEmpty || last.isEmpty) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(
-                              content:
-                                  Text('Vor- und Nachname sind Pflicht')),
-                        );
-                        return;
-                      }
-                      final rank = int.tryParse(rankCtrl.text.trim());
+        builder: (ctx, setStateBs) {
+          final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+          final safeBottom = MediaQuery.of(ctx).padding.bottom;
 
-                      setStateDialog(() => saving = true);
-                      try {
-                        await TeamPlayerService.createPlayer(
-                          teamId: widget.teamId,
-                          firstName: first,
-                          lastName: last,
-                          ranking: rank,
-                        );
-                        if (ctx.mounted) Navigator.pop(ctx);
-                      } catch (e) {
-                        setStateDialog(() => saving = false);
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(content: Text('Fehler: $e')),
-                          );
-                        }
-                      }
-                    },
-              child: const Text('Hinzufügen'),
+          return ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(CsRadii.xl),
             ),
-          ],
-        ),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: CsColors.white,
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(CsRadii.xl),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 10, bottom: 4),
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: CsColors.gray300,
+                        borderRadius: BorderRadius.circular(CsRadii.full),
+                      ),
+                    ),
+                  ),
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Spieler hinzufügen',
+                            style: CsTextStyles.titleLarge,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            icon: const Icon(Icons.close, size: 20),
+                            onPressed: () => Navigator.pop(ctx),
+                            color: CsColors.gray500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  // Content
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        16,
+                        20,
+                        16 + bottomInset,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Vorname *', style: CsTextStyles.labelSmall),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: firstCtrl,
+                            decoration: const InputDecoration(
+                              hintText: 'Max',
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            autofocus: true,
+                          ),
+                          const SizedBox(height: 16),
+                          Text('Nachname *', style: CsTextStyles.labelSmall),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: lastCtrl,
+                            decoration: const InputDecoration(
+                              hintText: 'Muster',
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                          ),
+                          const SizedBox(height: 16),
+                          RankingSelector(
+                            country: selectedCountry,
+                            rankingValue: selectedRanking,
+                            rankingError: rankingError,
+                            enabled: !saving,
+                            onCountryChanged: (c) => setStateBs(() {
+                              selectedCountry = c;
+                              selectedRanking = null;
+                              rankingError = null;
+                            }),
+                            onRankingChanged: (v) => setStateBs(() {
+                              selectedRanking = v;
+                              rankingError = null;
+                            }),
+                          ),
+                          if (saving) ...[
+                            const SizedBox(height: 16),
+                            const LinearProgressIndicator(),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  // CTA
+                  Container(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      12,
+                      20,
+                      12 + safeBottom,
+                    ),
+                    decoration: BoxDecoration(
+                      color: CsColors.white,
+                      border: Border(
+                        top: BorderSide(
+                          color: CsColors.gray200.withValues(alpha: 0.6),
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                    child: CsPrimaryButton(
+                      onPressed: saving
+                          ? null
+                          : () async {
+                              final first = firstCtrl.text.trim();
+                              final last = lastCtrl.text.trim();
+                              if (first.isEmpty || last.isEmpty) {
+                                CsToast.info(ctx, 'Bitte Vor- und Nachname eingeben.');
+                                return;
+                              }
+                              if (selectedRanking == null) {
+                                setStateBs(() {
+                                  rankingError = 'Bitte ein Ranking auswählen.';
+                                });
+                                return;
+                              }
+
+                              setStateBs(() => saving = true);
+                              try {
+                                await TeamPlayerService.createPlayer(
+                                  teamId: widget.teamId,
+                                  firstName: first,
+                                  lastName: last,
+                                  ranking: selectedRanking,
+                                );
+                                if (ctx.mounted) Navigator.pop(ctx);
+                              } catch (e) {
+                                setStateBs(() => saving = false);
+                                if (ctx.mounted) {
+                                  CsToast.error(ctx, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+                                }
+                              }
+                            },
+                      label: 'Hinzufügen',
+                      loading: saving,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
 
-    // Refresh after dialog closes
     _loadPlayerSlots();
   }
 
@@ -221,7 +326,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         final rows = await _supabase
             .from('cs_team_members')
             .select(
-                'user_id, role, nickname, is_playing, created_at, cs_app_profiles(display_name, email, avatar_path)')
+              'user_id, role, nickname, is_playing, created_at, cs_app_profiles(display_name, email, avatar_path)',
+            )
             .eq('team_id', widget.teamId)
             .order('created_at', ascending: true);
 
@@ -239,8 +345,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
         members = List<Map<String, dynamic>>.from(memberRows);
 
-        final userIds =
-            members.map((m) => m['user_id'] as String).toSet().toList();
+        final userIds = members
+            .map((m) => m['user_id'] as String)
+            .toSet()
+            .toList();
 
         Map<String, Map<String, dynamic>> profileMap = {};
 
@@ -263,10 +371,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         _members = members;
       });
 
-      // Avatar resolution is handled by _loadAll() after all parallel loads,
-      // or explicitly after standalone _loadMembers() calls below.
-
-      // Check forced nickname only if team has NO player slots
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _playerSlots.isEmpty) _checkNicknameRequired();
       });
@@ -282,7 +386,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
   void _checkNicknameRequired() {
     if (_nicknameDialogShowing) return;
-    if (_playerSlots.isNotEmpty) return; // skip if slots exist
+    if (_playerSlots.isNotEmpty) return;
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return;
 
@@ -290,8 +394,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     if (myMember == null) return;
 
     final nickname = myMember['nickname'] as String?;
-    if (nickname == null ||
-        RegExp(r'^Spieler \d+$').hasMatch(nickname)) {
+    if (nickname == null || RegExp(r'^Spieler \d+$').hasMatch(nickname)) {
       _forceNicknameDialog();
     }
   }
@@ -304,80 +407,167 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     bool saving = false;
     String? errorText;
 
-    await showDialog<void>(
+    await showModalBottomSheet<void>(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: StatefulBuilder(
-          builder: (ctx, setStateDialog) => AlertDialog(
-            title: const Text('Wie heisst du?'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Bitte gib deinen Namen ein,\ndamit dein Team dich erkennt.',
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: ctrl,
-                  decoration: InputDecoration(
-                    labelText: 'Dein Name im Team',
-                    hintText: 'z.B. Max, Sandro, Martin W.',
-                    errorText: errorText,
-                    counterText: '',
-                  ),
-                  autofocus: true,
-                  textCapitalization: TextCapitalization.words,
-                  maxLength: 30,
-                ),
-                if (saving) ...[
-                  const SizedBox(height: 8),
-                  const LinearProgressIndicator(),
-                ],
-              ],
-            ),
-            actions: [
-              ElevatedButton(
-                onPressed: saving
-                    ? null
-                    : () async {
-                        final name = ctrl.text.trim();
-                        if (name.length < 2) {
-                          setStateDialog(
-                              () => errorText = 'Mindestens 2 Zeichen');
-                          return;
-                        }
-                        setStateDialog(() {
-                          saving = true;
-                          errorText = null;
-                        });
-                        try {
-                          await MemberService.updateMyNickname(
-                              widget.teamId, name);
-                          if (!mounted) return;
-                          Navigator.pop(ctx);
-                        } catch (e) {
-                          setStateDialog(() {
-                            saving = false;
-                            errorText = 'Fehler: $e';
-                          });
-                        }
-                      },
-                child: const Text('Speichern'),
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateBs) {
+          final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+          final safeBottom = MediaQuery.of(ctx).padding.bottom;
+
+          return PopScope(
+            canPop: false,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(CsRadii.xl),
               ),
-            ],
-          ),
-        ),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: CsColors.white,
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(CsRadii.xl),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Drag handle
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 10, bottom: 4),
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: CsColors.gray300,
+                          borderRadius: BorderRadius.circular(CsRadii.full),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Wie heisst du?',
+                              style: CsTextStyles.titleLarge,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: EdgeInsets.fromLTRB(
+                          20,
+                          16,
+                          20,
+                          16 + bottomInset,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Bitte gib deinen Namen ein, damit dein Team dich erkennt.',
+                              style: CsTextStyles.bodyMedium,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Dein Name im Team',
+                              style: CsTextStyles.labelSmall,
+                            ),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: ctrl,
+                              decoration: InputDecoration(
+                                hintText: 'z.B. Max, Sandro, Martin W.',
+                                errorText: errorText,
+                                counterText: '',
+                              ),
+                              autofocus: true,
+                              textCapitalization: TextCapitalization.words,
+                              maxLength: 30,
+                            ),
+                            if (saving) ...[
+                              const SizedBox(height: 8),
+                              const LinearProgressIndicator(),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        12,
+                        20,
+                        12 + safeBottom,
+                      ),
+                      decoration: BoxDecoration(
+                        color: CsColors.white,
+                        border: Border(
+                          top: BorderSide(
+                            color: CsColors.gray200.withValues(alpha: 0.6),
+                            width: 0.5,
+                          ),
+                        ),
+                      ),
+                      child: CsPrimaryButton(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                final name = ctrl.text.trim();
+                                if (name.length < 2) {
+                                  setStateBs(
+                                    () => errorText = 'Mindestens 2 Zeichen',
+                                  );
+                                  return;
+                                }
+                                setStateBs(() {
+                                  saving = true;
+                                  errorText = null;
+                                });
+                                try {
+                                  await MemberService.updateMyNickname(
+                                    widget.teamId,
+                                    name,
+                                  );
+                                  if (!mounted) return;
+                                  Navigator.pop(ctx);
+                                } catch (e) {
+                                  setStateBs(() {
+                                    saving = false;
+                                    errorText = 'Spieler konnte nicht hinzugefügt werden.';
+                                  });
+                                }
+                              },
+                        label: 'Speichern',
+                        loading: saving,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
 
     _nicknameDialogShowing = false;
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Name gespeichert')),
-      );
+      CsToast.success(context, 'Name gespeichert');
       _loadMembers().then((_) => _resolveAvatarUrls());
     }
   }
@@ -385,29 +575,112 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // ── Nickname Edit ────────────────────────────────────────
 
   Future<void> _editNickname(Map<String, dynamic> member) async {
-    final ctrl =
-        TextEditingController(text: member['nickname'] as String? ?? '');
-    final newName = await showDialog<String>(
+    final ctrl = TextEditingController(
+      text: member['nickname'] as String? ?? '',
+    );
+
+    final newName = await showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Name ändern'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(labelText: 'Dein Name im Team'),
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Abbrechen'),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (ctx) {
+        final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+        final safeBottom = MediaQuery.of(ctx).padding.bottom;
+
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(CsRadii.xl),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Speichern'),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: CsColors.white,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(CsRadii.xl),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 10, bottom: 4),
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: CsColors.gray300,
+                      borderRadius: BorderRadius.circular(CsRadii.full),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Name ändern',
+                          style: CsTextStyles.titleLarge,
+                        ),
+                      ),
+                      SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.close, size: 20),
+                          onPressed: () => Navigator.pop(ctx),
+                          color: CsColors.gray500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottomInset),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Dein Name im Team',
+                        style: CsTextStyles.labelSmall,
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: ctrl,
+                        autofocus: true,
+                        textCapitalization: TextCapitalization.words,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.fromLTRB(20, 12, 20, 12 + safeBottom),
+                  decoration: BoxDecoration(
+                    color: CsColors.white,
+                    border: Border(
+                      top: BorderSide(
+                        color: CsColors.gray200.withValues(alpha: 0.6),
+                        width: 0.5,
+                      ),
+                    ),
+                  ),
+                  child: CsPrimaryButton(
+                    onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                    label: 'Speichern',
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
 
     if (newName == null || newName.isEmpty) return;
@@ -422,23 +695,17 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       await _loadMembers();
       await _resolveAvatarUrls();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name aktualisiert ✅')),
-      );
+      CsToast.success(context, 'Name aktualisiert');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Name konnte nicht gespeichert werden.');
     }
   }
 
   // ── Toggle is_player ─────────────────────────────────────
 
-  /// Guard against concurrent toggle operations.
   bool _togglingIsPlayer = false;
 
-  /// Source-of-truth: captain has a player slot if their uid is in _claimedMap.
   bool get _captainPlays {
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return false;
@@ -446,26 +713,19 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
 
   Future<void> _toggleIsPlayer(Map<String, dynamic> member, bool value) async {
-    // Guard: prevent concurrent toggles / rapid double-taps.
     if (_togglingIsPlayer) return;
     _togglingIsPlayer = true;
 
-    // Optimistic UI update
     final previousPlaying = member['is_playing'];
     setState(() => member['is_playing'] = value);
 
     try {
       if (value) {
-        // ── Turning ON: Captain wants to play ──
-        // Create player slot with name from nickname/profile.
-        // Ranking is optional – captain can edit later.
         await TeamPlayerService.upsertCaptainSlot(
           teamId: widget.teamId,
           ranking: null,
         );
       } else {
-        // ── Turning OFF: Captain stops playing ──
-        // Remove the captain's player slot.
         await TeamPlayerService.removeCaptainSlot(teamId: widget.teamId);
       }
 
@@ -474,12 +734,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       if (!mounted) return;
       await _resolveAvatarUrls();
     } catch (e) {
-      // ── Rollback on error ──
       if (!mounted) return;
       setState(() => member['is_playing'] = previousPlaying);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Änderung konnte nicht gespeichert werden.');
     } finally {
       _togglingIsPlayer = false;
     }
@@ -499,19 +756,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       print('INVITE_DEEP_LINK=${InviteService.buildDeepLink(token)}');
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invite token created ✅')),
-      );
+      CsToast.success(context, 'Einladungslink erstellt');
 
       await Share.share(shareText, subject: 'CourtSwiss Team Invite');
     } catch (e) {
       // ignore: avoid_print
       print('shareInviteLink failed: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Fehler beim Erstellen des Invite-Links: $e')),
-      );
+      CsToast.error(context, 'Einladungslink konnte nicht erstellt werden.');
     }
   }
 
@@ -520,16 +772,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   String _memberDisplayName(Map<String, dynamic> member) {
     final userId = member['user_id'] as String?;
 
-    // 1) Check claimed player slot first
     if (userId != null && _claimedMap.containsKey(userId)) {
       return TeamPlayerService.playerDisplayName(_claimedMap[userId]!);
     }
 
-    // 2) Nickname from cs_team_members
     final nickname = member['nickname'] as String?;
     if (nickname != null && nickname.isNotEmpty) return nickname;
 
-    // 3) Check embedded profile from FK join
     final embedded = member['cs_app_profiles'];
     if (embedded is Map<String, dynamic>) {
       final name = embedded['display_name'] as String?;
@@ -538,7 +787,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       if (email != null && email.isNotEmpty) return email;
     }
 
-    // 4) Check separate _profiles map (fallback path)
     if (userId != null && _profiles.containsKey(userId)) {
       final profile = _profiles[userId]!;
       final name = profile['display_name'] as String?;
@@ -547,7 +795,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       if (email != null && email.isNotEmpty) return email;
     }
 
-    // 5) Last resort: shortened user_id
     if (userId != null && userId.length > 8) {
       return '${userId.substring(0, 8)}…';
     }
@@ -560,9 +807,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
     switch (role) {
       case 'captain':
-        // Check actual player slot existence, not the is_playing flag.
-        final plays =
-            uid != null && _claimedMap.containsKey(uid);
+        final plays = uid != null && _claimedMap.containsKey(uid);
         return plays ? 'Captain (spielend)' : 'Captain';
       case 'member':
         return 'Spieler';
@@ -572,30 +817,24 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
 
   String _captainDisplay() {
-    final captain =
-        _members.where((m) => m['role'] == 'captain').firstOrNull;
+    final captain = _members.where((m) => m['role'] == 'captain').firstOrNull;
     if (captain == null) return '—';
     return _memberDisplayName(captain);
   }
 
-  /// Ranking string for a member (from player slot or cs_team_members).
   String _rankingStr(String userId) {
     final slot = _claimedMap[userId];
     if (slot != null) {
       final r = slot['ranking'];
-      if (r != null) return 'R$r';
+      if (r is int) return RankingData.label(r);
+      if (r is num) return RankingData.label(r.toInt());
     }
     return '';
   }
 
   // ── Avatar ──────────────────────────────────────────────────
 
-  /// Resolves avatar signed URLs for ALL relevant users:
-  ///   – _members  (user_id)
-  ///   – _playerSlots  (claimed_by, when != null)
-  /// Fetches avatar_path from cs_app_profiles in one batch query.
   Future<void> _resolveAvatarUrls() async {
-    // 1) Collect every user ID that might have an avatar
     final allUserIds = <String>{};
 
     for (final m in _members) {
@@ -612,7 +851,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       return;
     }
 
-    // 2) Batch-query profiles for avatar_path
     try {
       final profileRows = await _supabase
           .from('cs_app_profiles')
@@ -620,8 +858,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           .inFilter('user_id', allUserIds.toList());
 
       // ignore: avoid_print
-      print('AVATAR_RESOLVE requested=${allUserIds.length} '
-          'returned=${(profileRows as List).length}');
+      print(
+        'AVATAR_RESOLVE requested=${allUserIds.length} '
+        'returned=${(profileRows as List).length}',
+      );
 
       final pathsByUid = <String, String>{};
       for (final p in List<Map<String, dynamic>>.from(profileRows)) {
@@ -640,7 +880,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         return;
       }
 
-      // 3) Deduplicate paths and batch-resolve signed URLs
       final uniquePaths = pathsByUid.values.toSet().toList();
       final signedMap = await AvatarService.createSignedUrls(uniquePaths);
 
@@ -669,20 +908,21 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
     setState(() => _avatarUrls.remove(userId));
 
-    AvatarService.createSignedUrl(path).then((newUrl) {
-      if (mounted) {
-        setState(() => _avatarUrls[userId] = newUrl);
-      }
-    }).catchError((e) {
-      // ignore: avoid_print
-      print('avatar refresh failed for $userId: $e');
-    });
+    AvatarService.createSignedUrl(path)
+        .then((newUrl) {
+          if (mounted) {
+            setState(() => _avatarUrls[userId] = newUrl);
+          }
+        })
+        .catchError((e) {
+          // ignore: avoid_print
+          print('avatar refresh failed for $userId: $e');
+        });
   }
 
   String _initials(Map<String, dynamic> member) {
     final userId = member['user_id'] as String?;
 
-    // Use player slot initials if claimed
     if (userId != null && _claimedMap.containsKey(userId)) {
       final slot = _claimedMap[userId]!;
       final f = (slot['first_name'] as String? ?? '');
@@ -729,92 +969,164 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profilbild aktualisiert ✅')),
-      );
+      CsToast.success(context, 'Profilbild aktualisiert');
 
       _loadMembers().then((_) => _resolveAvatarUrls());
     } on AvatarUploadException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.userMessage),
-          duration: const Duration(seconds: 6),
-        ),
-      );
+      CsToast.error(context, e.userMessage);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler beim Hochladen: $e')),
-      );
+      CsToast.error(context, 'Bild konnte nicht hochgeladen werden.');
     }
   }
 
   // ── Bucket Setup Dialog ────────────────────────────────────
   Future<void> _showBucketSetupDialog() async {
-    await showDialog<void>(
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Storage Setup erforderlich'),
-        content: SingleChildScrollView(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (ctx) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(CsRadii.xl),
+        ),
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+          ),
+          decoration: const BoxDecoration(
+            color: CsColors.white,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(CsRadii.xl),
+            ),
+          ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Der Storage-Bucket "profile-photos" wurde '
-                'noch nicht angelegt.\n'
-                'Bitte folge diesen Schritten:',
-              ),
-              const SizedBox(height: 16),
-              _setupStep('1', 'Supabase Dashboard → Storage → "New bucket"'),
-              _setupStep('2', 'Name exakt: profile-photos'),
-              _setupStep('3', 'Public: OFF (private)'),
-              _setupStep(
-                  '4', 'SQL Editor → untenstehende Policies ausführen'),
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade300),
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 10, bottom: 4),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: CsColors.gray300,
+                    borderRadius: BorderRadius.circular(CsRadii.full),
+                  ),
                 ),
-                child: SelectableText(
-                  AvatarService.setupSql,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 11.5,
-                    height: 1.4,
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Storage Setup erforderlich',
+                        style: CsTextStyles.titleLarge,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed: () {
+                          AvatarService.resetBucketCache();
+                          Navigator.pop(ctx);
+                        },
+                        color: CsColors.gray500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Der Storage-Bucket "profile-photos" wurde '
+                        'noch nicht angelegt.\n'
+                        'Bitte folge diesen Schritten:',
+                        style: CsTextStyles.bodyMedium,
+                      ),
+                      const SizedBox(height: 16),
+                      _setupStep(
+                        '1',
+                        'Supabase Dashboard → Storage → "New bucket"',
+                      ),
+                      _setupStep('2', 'Name exakt: profile-photos'),
+                      _setupStep('3', 'Public: OFF (private)'),
+                      _setupStep(
+                        '4',
+                        'SQL Editor → untenstehende Policies ausführen',
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: CsColors.gray100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: CsColors.gray300),
+                        ),
+                        child: SelectableText(
+                          AvatarService.setupSql,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11.5,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: CsSecondaryButton(
+                          onPressed: () {
+                            Clipboard.setData(
+                              ClipboardData(text: AvatarService.setupSql),
+                            );
+                            CsToast.success(ctx, 'SQL in Zwischenablage kopiert');
+                          },
+                          label: 'SQL kopieren',
+                          icon: const Icon(Icons.copy, size: 18),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: CsPrimaryButton(
+                          onPressed: () {
+                            AvatarService.resetBucketCache();
+                            Navigator.pop(ctx);
+                          },
+                          label: 'Schliessen',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              Clipboard.setData(
-                ClipboardData(text: AvatarService.setupSql),
-              );
-              ScaffoldMessenger.of(ctx).showSnackBar(
-                const SnackBar(
-                    content: Text('SQL in Zwischenablage kopiert ✅')),
-              );
-            },
-            icon: const Icon(Icons.copy, size: 18),
-            label: const Text('SQL kopieren'),
-          ),
-          TextButton(
-            onPressed: () {
-              AvatarService.resetBucketCache();
-              Navigator.pop(ctx);
-            },
-            child: const Text('Schliessen'),
-          ),
-        ],
       ),
     );
   }
@@ -827,12 +1139,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         children: [
           CircleAvatar(
             radius: 12,
-            backgroundColor: Colors.blue,
-            child: Text(number,
-                style: const TextStyle(color: Colors.white, fontSize: 12)),
+            backgroundColor: CsColors.black,
+            child: Text(
+              number,
+              style: const TextStyle(color: CsColors.lime, fontSize: 12),
+            ),
           ),
           const SizedBox(width: 10),
-          Expanded(child: Text(text)),
+          Expanded(child: Text(text, style: CsTextStyles.bodyMedium)),
         ],
       ),
     );
@@ -846,15 +1160,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       final matches = await MatchService.listMatches(widget.teamId);
 
       final matchIds = matches.map((m) => m['id'] as String).toList();
-      final availRows =
-          await MatchService.listAvailabilityBatch(matchIds);
+      final availRows = await MatchService.listAvailabilityBatch(matchIds);
 
       final counts = <String, Map<String, int>>{};
       for (final row in availRows) {
         final mid = row['match_id'] as String;
         final status = row['status'] as String;
-        counts.putIfAbsent(
-            mid, () => {'yes': 0, 'no': 0, 'maybe': 0});
+        counts.putIfAbsent(mid, () => {'yes': 0, 'no': 0, 'maybe': 0});
         counts[mid]![status] = (counts[mid]![status] ?? 0) + 1;
       }
 
@@ -909,13 +1221,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     await _loadAll();
   }
 
-  // ── UI ────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════
+  //  BUILD
+  // ══════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.team['name'] ?? 'Team'),
+    return CsScaffoldList(
+      appBar: CsGlassAppBar(
+        title: '',
         actions: [
           Badge(
             label: Text('$_unreadCount'),
@@ -928,26 +1242,107 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           ),
           IconButton(
             onPressed: _shareInviteLink,
-            icon: const Icon(Icons.share),
+            icon: const Icon(Icons.share_outlined),
             tooltip: 'Einladungslink teilen',
           ),
-          IconButton(
-            onPressed: _refreshAll,
-            icon: const Icon(Icons.refresh),
-          ),
+          IconButton(onPressed: _refreshAll, icon: const Icon(Icons.refresh)),
         ],
       ),
-      body: ListView(
+      // FAB: visible only for captain on "Team" tab (index 1)
+      floatingActionButton: _isAdmin && _tabIndex == 1
+          ? FloatingActionButton(
+              onPressed: _addPlayerSlotDialog,
+              tooltip: 'Spieler hinzufügen',
+              child: const Icon(Icons.person_add_alt_1),
+            )
+          : null,
+      body: Column(
         children: [
           // ── Sport Header Banner ──
           _buildSportHeader(),
 
-          // ── Team Info ──
-          Padding(
+          // ── Segment Tabs ──
+          CsSegmentTabs(
+            labels: _tabLabels,
+            selectedIndex: _tabIndex,
+            onChanged: (i) => setState(() => _tabIndex = i),
+          ),
+
+          // ── Tab Content ──
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              switchInCurve: Curves.easeIn,
+              switchOutCurve: Curves.easeOut,
+              child: _buildTabContent(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabContent() {
+    switch (_tabIndex) {
+      case 0:
+        return _buildOverviewTab();
+      case 1:
+        return _buildPlayersTab();
+      case 2:
+        return _buildMatchesTab();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  // ── Tab 0: Übersicht ──────────────────────────────────────
+
+  Widget _buildOverviewTab() {
+    final claimed = _playerSlots.where((s) => s['claimed_by'] != null).length;
+    final total = _playerSlots.length;
+
+    return ListView(
+      key: const ValueKey('overview'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
+        CsAnimatedEntrance(
+          child: CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200.withValues(alpha: 0.45),
+            boxShadow: CsShadows.soft,
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      color: CsColors.gray900,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: CsColors.black,
+                        borderRadius:
+                            BorderRadius.circular(CsRadii.full),
+                      ),
+                      child: const Text(
+                        'Team Info',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: CsColors.white,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
                 _infoRow('Team', widget.team['name']),
                 _infoRow('Club', widget.team['club_name']),
                 _infoRow('Liga', widget.team['league']),
@@ -956,154 +1351,412 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               ],
             ),
           ),
-          const Divider(),
+        ),
+        const SizedBox(height: 8),
 
-          // ═══════════════════════════════════════════
-          // ── KADER (Player Slots) ──────────────────
-          // ═══════════════════════════════════════════
-          if (_playerSlots.isNotEmpty) ...[
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Text(
-                    'Team (${_playerSlots.length})',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const Spacer(),
-                  if (_isAdmin)
-                    IconButton(
-                      icon: const Icon(Icons.person_add_alt_1),
-                      tooltip: 'Spieler hinzufügen',
-                      onPressed: _addPlayerSlotDialog,
-                    ),
-                ],
-              ),
-            ),
-            ..._buildPlayerSlotTiles(),
-            const Divider(thickness: 2, height: 32),
-          ] else if (_isAdmin) ...[
-            // Show "add player" prompt when no slots exist yet
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Text(
-                    'Team',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.person_add_alt_1),
-                    tooltip: 'Spieler hinzufügen',
-                    onPressed: _addPlayerSlotDialog,
-                  ),
-                ],
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                'Noch keine Spieler angelegt.\n'
-                'Lege Spieler mit Name + Ranking an,\n'
-                'damit sich Spieler zuordnen können.',
-                style: TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-            ),
-            const Divider(thickness: 2, height: 32),
-          ],
+        // ── Quick-Settings (Captain toggle + Invite link) ──
+        ..._buildSettingsCards(),
 
-          // ═══════════════════════════════════════════
-          // ── MITGLIEDER (Team Members) ─────────────
-          // ═══════════════════════════════════════════
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              'Spieler (${_loading ? '…' : _members.length})',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          ),
-
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_error != null)
-            Padding(
+        if (total > 0)
+          CsAnimatedEntrance(
+            delay: const Duration(milliseconds: 80),
+            child: CsCard(
+              backgroundColor: CsColors.white,
+              borderColor: CsColors.gray200.withValues(alpha: 0.45),
+              boxShadow: CsShadows.soft,
               padding: const EdgeInsets.all(16),
-              child: Center(
-                child: Text('Fehler:\n$_error',
-                    textAlign: TextAlign.center),
-              ),
-            )
-          else if (_members.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: Text('Noch keine Spieler.')),
-            )
-          else
-            ..._buildMemberTiles(),
-
-          const Divider(thickness: 2, height: 32),
-
-          // ═══════════════════════════════════════════
-          // ── SPIELE ────────────────────────────────
-          // ═══════════════════════════════════════════
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Text(
-                  'Spiele (${_matchesLoading ? '…' : _matches.length})',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const Spacer(),
-                if (_isAdmin)
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    tooltip: 'Spiel hinzufügen',
-                    onPressed: _createMatch,
+              child: Column(
+                children: [
+                  CsProgressRow(
+                    label: 'Spieler',
+                    value: '$total',
+                    progress: 1.0,
+                    color: CsColors.lime,
+                    onDark: false,
                   ),
-              ],
+                  const SizedBox(height: 12),
+                  CsProgressRow(
+                    label: 'Verbunden',
+                    value: '$claimed / $total',
+                    progress: total > 0 ? claimed / total : 0,
+                    color: CsColors.emerald,
+                    onDark: false,
+                  ),
+                ],
+              ),
             ),
           ),
-
-          if (_matchesLoading)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_matches.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: Text('Noch keine Spiele geplant.')),
-            )
-          else
-            ..._buildMatchTiles(),
-
-          const SizedBox(height: 24),
-        ],
-      ),
+        const SizedBox(height: 8),
+        if (_matches.isNotEmpty)
+          CsAnimatedEntrance(
+            delay: const Duration(milliseconds: 160),
+            child: CsCard(
+              backgroundColor: CsColors.white,
+              borderColor: CsColors.gray200.withValues(alpha: 0.45),
+              boxShadow: CsShadows.soft,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.sports_score,
+                        color: CsColors.gray900,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: CsColors.black,
+                          borderRadius:
+                              BorderRadius.circular(CsRadii.full),
+                        ),
+                        child: const Text(
+                          'Nächstes Spiel',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: CsColors.white,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    _matches.first['opponent'] ?? '?',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: CsColors.gray900,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_today,
+                        size: 13,
+                        color: CsColors.gray600,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        _formatMatchDate(_matches.first),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: CsColors.gray600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 
-  // ── Player Slot tiles ───────────────────────────────────
+  // ── Tab 1: Spieler ────────────────────────────────────────
 
-  List<Widget> _buildPlayerSlotTiles() {
-    final tiles = <Widget>[];
-    for (int i = 0; i < _playerSlots.length; i++) {
-      tiles.add(_buildPlayerSlotTile(_playerSlots[i]));
-      if (i < _playerSlots.length - 1) {
-        tiles.add(const Divider(height: 1));
-      }
-    }
-    return tiles;
+  Widget _buildPlayersTab() {
+    final claimed = _playerSlots.where((s) => s['claimed_by'] != null).length;
+    final total = _playerSlots.length;
+
+    return ListView(
+      key: const ValueKey('players'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
+        // Progress rows
+        if (total > 0) ...[
+          CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200.withValues(alpha: 0.45),
+            boxShadow: CsShadows.soft,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                CsProgressRow(
+                  label: 'Spieler',
+                  value: '$total',
+                  progress: 1.0,
+                  color: CsColors.lime,
+                  onDark: false,
+                ),
+                const SizedBox(height: 12),
+                CsProgressRow(
+                  label: 'Verbunden',
+                  value: '$claimed / $total',
+                  progress: total > 0 ? claimed / total : 0,
+                  color: CsColors.emerald,
+                  onDark: false,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+
+        // Player slots section
+        if (_playerSlots.isNotEmpty) ...[
+          Row(
+            children: [
+              Expanded(
+                child: CsSectionHeader(
+                  title: 'Team (${_playerSlots.length})',
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+              if (_isAdmin)
+                IconButton(
+                  icon: const Icon(Icons.person_add_alt_1, size: 20),
+                  tooltip: 'Spieler hinzufügen',
+                  onPressed: _addPlayerSlotDialog,
+                ),
+            ],
+          ),
+          ...List.generate(_playerSlots.length, (i) {
+            return CsAnimatedEntrance.staggered(
+              index: i,
+              child: _buildPlayerSlotTile(_playerSlots[i]),
+            );
+          }),
+          const SizedBox(height: 16),
+        ] else if (_isAdmin) ...[
+          Row(
+            children: [
+              Expanded(
+                child: CsSectionHeader(
+                  title: 'Team',
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.person_add_alt_1, size: 20),
+                tooltip: 'Spieler hinzufügen',
+                onPressed: _addPlayerSlotDialog,
+              ),
+            ],
+          ),
+          CsLightCard(
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 18, color: CsColors.gray400),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Noch keine Spieler vorhanden.\n'
+                    'Füge Spieler mit Name und Ranking hinzu.',
+                    style: CsTextStyles.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Members section
+        CsSectionHeader(
+          title: 'Verbundene Spieler (${_loading ? '…' : _members.length})',
+          padding: const EdgeInsets.symmetric(vertical: 8),
+        ),
+
+        if (_loading)
+          ...List.generate(3, (_) => const CsSkeletonCard())
+        else if (_error != null)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CsEmptyState(
+                    icon: Icons.cloud_off_rounded,
+                    title: 'Verbindungsproblem',
+                    subtitle: 'Daten konnten nicht geladen werden.',
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _loadMembers,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Nochmal versuchen'),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else if (_members.isEmpty)
+          CsEmptyState(
+            icon: Icons.people_outline,
+            title: 'Noch keine Spieler',
+            subtitle: 'Teile den Einladungslink, damit sich Spieler zuordnen können.',
+          )
+        else
+          ...List.generate(_members.length, (i) {
+            return CsAnimatedEntrance.staggered(
+              index: i,
+              child: _buildMemberTile(_members[i]),
+            );
+          }),
+      ],
+    );
   }
+
+  // ── Tab 2: Spiele ─────────────────────────────────────────
+
+  Widget _buildMatchesTab() {
+    return ListView(
+      key: const ValueKey('matches'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
+        if (_matchesLoading)
+          ...List.generate(3, (_) => const CsSkeletonCard())
+        else if (_matches.isEmpty)
+          CsEmptyState(
+            icon: Icons.event_outlined,
+            title: 'Noch keine Spiele',
+            subtitle: 'Erstelle ein Spiel, damit dein Team reagieren kann.',
+            ctaLabel: _isAdmin ? 'Spiel erstellen' : null,
+            onCtaTap: _isAdmin ? _createMatch : null,
+          )
+        else ...[
+          if (_isAdmin)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: CsPrimaryButton(
+                onPressed: _createMatch,
+                label: 'Spiel erstellen',
+                icon: const Icon(Icons.add, size: 20),
+              ),
+            ),
+          ...List.generate(_matches.length, (i) {
+            return CsAnimatedEntrance.staggered(
+              index: i,
+              child: _buildMatchTile(_matches[i]),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  // ── Settings cards (shown in Übersicht) ──────────────────
+
+  List<Widget> _buildSettingsCards() {
+    final uid = _supabase.auth.currentUser?.id;
+    final myMember =
+        _members.where((m) => m['user_id'] == uid).firstOrNull;
+    final isCaptain = myMember?['role'] == 'captain';
+
+    return [
+      // Captain plays toggle
+      if (isCaptain) ...[
+        CsAnimatedEntrance(
+          delay: const Duration(milliseconds: 40),
+          child: CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200.withValues(alpha: 0.45),
+            boxShadow: CsShadows.soft,
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Ich spiele selbst',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: CsColors.gray900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Aktiviere dies, wenn du als Captain auch spielst und in der Aufstellung erscheinen möchtest.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: CsColors.gray600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Switch.adaptive(
+                  value: _captainPlays,
+                  onChanged: myMember != null && !_togglingIsPlayer
+                      ? (val) => _toggleIsPlayer(myMember, val)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+
+      // Invite link
+      CsAnimatedEntrance(
+        delay: const Duration(milliseconds: 60),
+        child: CsCard(
+          backgroundColor: CsColors.white,
+          borderColor: CsColors.gray200.withValues(alpha: 0.45),
+          boxShadow: CsShadows.soft,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.link,
+                    size: 18,
+                    color: CsColors.gray900,
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Einladungslink',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: CsColors.gray900,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Teile den Einladungslink, damit sich Spieler dem Team anschliessen können.',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                  color: CsColors.gray600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              CsPrimaryButton(
+                onPressed: _shareInviteLink,
+                label: 'Link teilen',
+                icon: const Icon(Icons.share, size: 18),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+    ];
+  }
+
+  // ── Player Slot tiles ───────────────────────────────────
 
   Widget _buildPlayerSlotTile(Map<String, dynamic> slot) {
     final name = TeamPlayerService.playerDisplayName(slot);
@@ -1113,7 +1766,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     final uid = _supabase.auth.currentUser?.id;
     final isMySlot = claimedBy == uid;
 
-    // Find avatar for claimed player
     String? avatarUrl;
     if (claimedBy != null) {
       avatarUrl = _avatarUrls[claimedBy];
@@ -1127,83 +1779,106 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       return '?';
     }();
 
-    return ListTile(
-      leading: CircleAvatar(
-        radius: 22,
-        backgroundColor: isClaimed
-            ? Colors.green.shade50
-            : Colors.grey.shade200,
-        backgroundImage:
-            avatarUrl != null ? NetworkImage(avatarUrl) : null,
-        onBackgroundImageError: avatarUrl != null && claimedBy != null
-            ? (error, stack) => _onAvatarImageError(claimedBy)
-            : null,
-        child: avatarUrl == null
-            ? Text(
-                slotInitials,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: isClaimed
-                      ? Colors.green.shade700
-                      : Colors.grey.shade500,
+    return CsCard(
+      backgroundColor: CsColors.white,
+      borderColor: CsColors.gray200.withValues(alpha: 0.45),
+      boxShadow: CsShadows.soft,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          // Avatar
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: isClaimed
+                ? CsColors.lime.withValues(alpha: 0.15)
+                : CsColors.gray100,
+            backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+            onBackgroundImageError: avatarUrl != null && claimedBy != null
+                ? (error, stack) => _onAvatarImageError(claimedBy)
+                : null,
+            child: avatarUrl == null
+                ? Text(
+                    slotInitials,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: isClaimed ? CsColors.gray900 : CsColors.gray400,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 12),
+          // Name + status
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ranking.isNotEmpty ? '$name · $ranking' : name,
+                  style: TextStyle(
+                    fontWeight: isMySlot ? FontWeight.w700 : FontWeight.w500,
+                    fontSize: 14,
+                    color: CsColors.gray900,
+                  ),
                 ),
-              )
-            : null,
-      ),
-      title: Text(
-        ranking.isNotEmpty ? '$name · $ranking' : name,
-        style: TextStyle(
-          fontWeight: isMySlot ? FontWeight.bold : FontWeight.normal,
-          color: isClaimed ? null : Colors.grey.shade600,
-        ),
-      ),
-      subtitle: Text(
-        isClaimed
-            ? (isMySlot ? '✅ Verbunden (du)' : '✅ Verbunden')
-            : '⬜ Nicht zugeordnet',
-        style: TextStyle(
-          fontSize: 12,
-          color: isClaimed ? Colors.green : Colors.grey,
-        ),
-      ),
-      trailing: _isAdmin && !isClaimed
-          ? PopupMenuButton<String>(
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    // Verbunden badge: lime bg + black text
+                    if (isClaimed)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: CsColors.lime,
+                          borderRadius:
+                              BorderRadius.circular(CsRadii.full),
+                        ),
+                        child: Text(
+                          isMySlot ? 'Du' : 'Verbunden',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: CsColors.black,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      )
+                    else
+                      CsStatusChip(
+                        label: 'Offen',
+                        variant: CsChipVariant.neutral,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (_isAdmin && !isClaimed)
+            PopupMenuButton<String>(
+              popUpAnimationStyle: CsMotion.dialog,
+              iconColor: CsColors.gray500,
               onSelected: (value) async {
                 if (value == 'delete') {
                   try {
-                    await TeamPlayerService.deletePlayer(
-                        slot['id'] as String);
+                    await TeamPlayerService.deletePlayer(slot['id'] as String);
                     _loadPlayerSlots();
                   } catch (e) {
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Fehler: $e')),
-                    );
+                    CsToast.error(context, 'Aktion konnte nicht ausgeführt werden.');
                   }
                 }
               },
               itemBuilder: (_) => const [
-                PopupMenuItem(
-                    value: 'delete', child: Text('🗑️ Entfernen')),
+                PopupMenuItem(value: 'delete', child: Text('Entfernen')),
               ],
-            )
-          : null,
+            ),
+        ],
+      ),
     );
   }
 
   // ── Member tile builder ──────────────────────────────────
-
-  List<Widget> _buildMemberTiles() {
-    final tiles = <Widget>[];
-    for (int i = 0; i < _members.length; i++) {
-      tiles.add(_buildMemberTile(_members[i]));
-      if (i < _members.length - 1) {
-        tiles.add(const Divider(height: 1));
-      }
-    }
-    return tiles;
-  }
 
   Widget _buildMemberTile(Map<String, dynamic> m) {
     final uid = _supabase.auth.currentUser?.id;
@@ -1213,81 +1888,146 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     final avatarUrl = _avatarUrl(m);
     final rankStr = _rankingStr(memberUid);
 
-    // Check if this member has claimed a slot
     final hasClaimed = _claimedMap.containsKey(memberUid);
 
-    return ListTile(
-      leading: GestureDetector(
-        onTap: isMe ? _changeAvatar : null,
-        child: CircleAvatar(
-          radius: 22,
-          backgroundColor: isCaptainRow
-              ? Colors.amber.shade100
-              : Colors.grey.shade200,
-          backgroundImage:
-              avatarUrl != null ? NetworkImage(avatarUrl) : null,
-          onBackgroundImageError: avatarUrl != null
-              ? (error, stack) => _onAvatarImageError(memberUid)
-              : null,
-          child: avatarUrl == null
-              ? Text(
-                  _initials(m),
+    return CsCard(
+      backgroundColor: CsColors.white,
+      borderColor: CsColors.gray200.withValues(alpha: 0.45),
+      boxShadow: CsShadows.soft,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: isMe ? _changeAvatar : null,
+            child: CircleAvatar(
+              radius: 20,
+              backgroundColor: isCaptainRow
+                  ? CsColors.lime.withValues(alpha: 0.15)
+                  : CsColors.gray100,
+              backgroundImage:
+                  avatarUrl != null ? NetworkImage(avatarUrl) : null,
+              onBackgroundImageError: avatarUrl != null
+                  ? (error, stack) => _onAvatarImageError(memberUid)
+                  : null,
+              child: avatarUrl == null
+                  ? Text(
+                      _initials(m),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: isCaptainRow ? CsColors.gray900 : CsColors.gray400,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  rankStr.isNotEmpty
+                      ? '${_memberDisplayName(m)} · $rankStr'
+                      : _memberDisplayName(m),
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
                     fontSize: 14,
-                    color: isCaptainRow
-                        ? Colors.amber.shade800
-                        : Colors.grey.shade600,
+                    fontWeight: isMe ? FontWeight.w700 : FontWeight.w500,
+                    color: CsColors.gray900,
                   ),
-                )
-              : null,
-        ),
-      ),
-      title: Text(
-        rankStr.isNotEmpty
-            ? '${_memberDisplayName(m)} · $rankStr'
-            : _memberDisplayName(m),
-      ),
-      subtitle: Text(
-        hasClaimed
-            ? '${_roleLabel(m)} · ✅ Zugeordnet'
-            : _roleLabel(m),
-      ),
-      trailing: isMe
-          ? Row(
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    // Role chip
+                    if (isCaptainRow)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: CsColors.lime,
+                          borderRadius:
+                              BorderRadius.circular(CsRadii.full),
+                        ),
+                        child: Text(
+                          _roleLabel(m),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: CsColors.black,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      )
+                    else
+                      CsStatusChip(
+                        label: _roleLabel(m),
+                        variant: CsChipVariant.neutral,
+                      ),
+                    if (hasClaimed) ...[
+                      const SizedBox(width: 6),
+                      // Zugeordnet badge: black bg + white text
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: CsColors.black,
+                          borderRadius:
+                              BorderRadius.circular(CsRadii.full),
+                        ),
+                        child: const Text(
+                          'Zugeordnet',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: CsColors.white,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (isMe)
+            Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (isCaptainRow)
-                  Tooltip(
-                    message: 'Ich spiele selbst',
-                    child: Switch.adaptive(
-                      // Source of truth: does a player slot exist for this uid?
-                      value: _captainPlays,
-                      onChanged: _togglingIsPlayer
-                          ? null // disable during async operation
-                          : (val) => _toggleIsPlayer(m, val),
-                    ),
-                  ),
                 IconButton(
-                  icon: const Icon(Icons.camera_alt, size: 20),
+                  icon: const Icon(
+                    Icons.camera_alt,
+                    size: 18,
+                    color: CsColors.gray500,
+                  ),
                   tooltip: 'Profilbild ändern',
                   onPressed: _changeAvatar,
                 ),
                 if (!hasClaimed && _playerSlots.isNotEmpty)
                   IconButton(
-                    icon: const Icon(Icons.link, size: 20),
+                    icon: const Icon(
+                      Icons.link,
+                      size: 18,
+                      color: CsColors.gray500,
+                    ),
                     tooltip: 'Spieler-Slot zuordnen',
                     onPressed: () => _openClaimScreen(),
                   ),
                 if (!hasClaimed && _playerSlots.isEmpty)
                   IconButton(
-                    icon: const Icon(Icons.edit, size: 20),
+                    icon: const Icon(
+                      Icons.edit,
+                      size: 18,
+                      color: CsColors.gray500,
+                    ),
                     tooltip: 'Name ändern',
                     onPressed: () => _editNickname(m),
                   ),
               ],
-            )
-          : null,
+            ),
+        ],
+      ),
     );
   }
 
@@ -1309,48 +2049,123 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
   // ── Match tile builder ───────────────────────────────────
 
-  List<Widget> _buildMatchTiles() {
-    final tiles = <Widget>[];
-    for (int i = 0; i < _matches.length; i++) {
-      tiles.add(_buildMatchTile(_matches[i]));
-      if (i < _matches.length - 1) {
-        tiles.add(const Divider(height: 1));
-      }
-    }
-    return tiles;
-  }
-
   Widget _buildMatchTile(Map<String, dynamic> match) {
     final isHome = match['is_home'] == true;
-    final counts = _matchAvailCounts[match['id']] ??
-        {'yes': 0, 'no': 0, 'maybe': 0};
+    final counts =
+        _matchAvailCounts[match['id']] ?? {'yes': 0, 'no': 0, 'maybe': 0};
 
-    return ListTile(
-      leading: Icon(
-        isHome ? Icons.home : Icons.directions_car,
-        color: isHome ? Colors.blue : Colors.orange,
-      ),
-      title: Text(match['opponent'] ?? '?'),
-      subtitle: Text(
-        '${_formatMatchDate(match)}  •  ${isHome ? 'Heim' : 'Auswärts'}',
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
+    return CsCard(
+      backgroundColor: CsColors.white,
+      borderColor: CsColors.gray200.withValues(alpha: 0.45),
+      boxShadow: CsShadows.soft,
+      onTap: () => _openMatch(match),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('✅${counts['yes']}',
-              style: const TextStyle(fontSize: 12, color: Colors.green)),
-          const SizedBox(width: 4),
-          Text('❌${counts['no']}',
-              style: const TextStyle(fontSize: 12, color: Colors.red)),
-          const SizedBox(width: 4),
-          Text('❓${counts['maybe']}',
-              style:
-                  const TextStyle(fontSize: 12, color: Colors.orange)),
-          const SizedBox(width: 4),
-          const Icon(Icons.chevron_right, size: 20),
+          // Header row
+          Row(
+            children: [
+              Icon(
+                isHome ? Icons.home_outlined : Icons.directions_car_outlined,
+                color: CsColors.gray900,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              CsStatusChip(
+                label: isHome ? 'Heim' : 'Auswärts',
+                variant: isHome ? CsChipVariant.info : CsChipVariant.amber,
+              ),
+              const Spacer(),
+              // Availability mini counts
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _miniCount(Icons.check_circle_outline, counts['yes'] ?? 0),
+                  const SizedBox(width: 10),
+                  _miniCount(Icons.cancel_outlined, counts['no'] ?? 0),
+                  const SizedBox(width: 10),
+                  _miniCount(Icons.help_outline, counts['maybe'] ?? 0),
+                ],
+              ),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: CsColors.gray900,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Title
+          Text(
+            match['opponent'] ?? '?',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: CsColors.gray900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          // Date + location
+          Row(
+            children: [
+              const Icon(
+                Icons.calendar_today,
+                size: 13,
+                color: CsColors.gray600,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                _formatMatchDate(match),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                  color: CsColors.gray600,
+                ),
+              ),
+              if ((match['location'] ?? '').toString().isNotEmpty) ...[
+                const SizedBox(width: 12),
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 13,
+                  color: CsColors.gray600,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    match['location'].toString(),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                      color: CsColors.gray600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
       ),
-      onTap: () => _openMatch(match),
+    );
+  }
+
+  Widget _miniCount(IconData icon, int count) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: Colors.black54),
+        const SizedBox(width: 3),
+        Text(
+          '$count',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1360,12 +2175,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     final color = sport?.color ?? Colors.blueGrey;
 
     return SizedBox(
-      height: 160,
+      height: 140,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Background image or gradient
           if (sport != null)
             Image.asset(
               sport.assetPath,
@@ -1378,10 +2192,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    color.withValues(alpha: 0.6),
-                    color,
-                  ],
+                  colors: [color.withValues(alpha: 0.6), color],
                 ),
               ),
             ),
@@ -1393,7 +2204,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.black.withValues(alpha: 0.55),
+                  Colors.black.withValues(alpha: 0.6),
                 ],
               ),
             ),
@@ -1402,7 +2213,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           Positioned(
             left: 16,
             right: 16,
-            bottom: 16,
+            bottom: 14,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -1419,26 +2230,33 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Icon(sport?.icon ?? Icons.sports,
-                        color: Colors.white70, size: 16),
+                    Icon(
+                      sport?.icon ?? Icons.sports,
+                      color: Colors.white70,
+                      size: 15,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       sport?.label ?? 'Sport',
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 14,
-                        shadows: [Shadow(blurRadius: 4, color: Colors.black54)],
+                        fontSize: 13,
+                        shadows: [
+                          Shadow(blurRadius: 4, color: Colors.black54),
+                        ],
                       ),
                     ),
-                    if ((widget.team['league'] ?? '').toString().isNotEmpty) ...[
+                    if ((widget.team['league'] ?? '')
+                        .toString()
+                        .isNotEmpty) ...[
                       const SizedBox(width: 8),
                       Text(
                         '• ${widget.team['league']}',
                         style: const TextStyle(
                           color: Colors.white70,
-                          fontSize: 14,
+                          fontSize: 13,
                           shadows: [
-                            Shadow(blurRadius: 4, color: Colors.black54)
+                            Shadow(blurRadius: 4, color: Colors.black54),
                           ],
                         ),
                       ),
@@ -1459,10 +2277,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            sport.color.withValues(alpha: 0.7),
-            sport.color,
-          ],
+          colors: [sport.color.withValues(alpha: 0.7), sport.color],
         ),
       ),
       child: Center(
@@ -1477,16 +2292,31 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
   Widget _infoRow(String label, String? value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 80,
-            child: Text(label,
-                style: const TextStyle(fontWeight: FontWeight.bold)),
+            width: 72,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: CsColors.gray600,
+              ),
+            ),
           ),
-          Expanded(child: Text(value ?? '–')),
+          Expanded(
+            child: Text(
+              value ?? '–',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: CsColors.gray900,
+              ),
+            ),
+          ),
         ],
       ),
     );

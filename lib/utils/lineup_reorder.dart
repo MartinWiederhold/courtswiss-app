@@ -161,8 +161,7 @@ class MoveStep {
   });
 
   @override
-  String toString() =>
-      'MoveStep($fromType#$fromPos → $toType#$toPos)';
+  String toString() => 'MoveStep($fromType#$fromPos → $toType#$toPos)';
 
   @override
   bool operator ==(Object other) =>

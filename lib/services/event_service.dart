@@ -24,7 +24,9 @@ class EventService {
     final payload = event['payload'];
     if (payload is Map<String, dynamic>) {
       final fromPayload = payload['match_id'];
-      if (fromPayload != null && fromPayload is String && fromPayload.isNotEmpty) {
+      if (fromPayload != null &&
+          fromPayload is String &&
+          fromPayload.isNotEmpty) {
         return fromPayload;
       }
     }
@@ -38,7 +40,9 @@ class EventService {
     final payload = event['payload'];
     if (payload is Map<String, dynamic>) {
       final fromPayload = payload['team_id'];
-      if (fromPayload != null && fromPayload is String && fromPayload.isNotEmpty) {
+      if (fromPayload != null &&
+          fromPayload is String &&
+          fromPayload.isNotEmpty) {
         return fromPayload;
       }
     }
@@ -85,9 +89,7 @@ class EventService {
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return [];
 
-    var query = _supabase
-        .from('cs_events')
-        .select();
+    var query = _supabase.from('cs_events').select();
     if (teamId != null) {
       query = query.eq('team_id', teamId);
     }
@@ -113,8 +115,11 @@ class EventService {
     return eventList.map((e) {
       final map = Map<String, dynamic>.from(e);
       final readAt = readMap[e['id'] as String];
-      map['cs_event_reads'] =
-          readAt != null ? [{'read_at': readAt}] : <Map<String, dynamic>>[];
+      map['cs_event_reads'] = readAt != null
+          ? [
+              {'read_at': readAt},
+            ]
+          : <Map<String, dynamic>>[];
       return map;
     }).toList();
   }
@@ -134,9 +139,7 @@ class EventService {
 
   /// Mark a single event as read (idempotent).
   static Future<void> markRead(String eventId) async {
-    await _supabase.rpc('cs_mark_event_read', params: {
-      'p_event_id': eventId,
-    });
+    await _supabase.rpc('cs_mark_event_read', params: {'p_event_id': eventId});
   }
 
   /// Mark all visible events as read.
@@ -156,8 +159,9 @@ class EventService {
   /// Human-readable title.
   /// Priority: payload-specific title → DB title column → type-based fallback.
   static String formatTitle(Map<String, dynamic> event) {
-    final payload =
-        event['payload'] is Map<String, dynamic> ? event['payload'] as Map<String, dynamic> : <String, dynamic>{};
+    final payload = event['payload'] is Map<String, dynamic>
+        ? event['payload'] as Map<String, dynamic>
+        : <String, dynamic>{};
 
     // 1) Payload may carry a display title (future-proof)
     final payloadTitle = payload['title'] as String?;
@@ -183,8 +187,9 @@ class EventService {
   /// Human-readable body.
   /// Priority: payload-constructed body → DB body column → type-based fallback.
   static String formatBody(Map<String, dynamic> event) {
-    final payload =
-        event['payload'] is Map<String, dynamic> ? event['payload'] as Map<String, dynamic> : <String, dynamic>{};
+    final payload = event['payload'] is Map<String, dynamic>
+        ? event['payload'] as Map<String, dynamic>
+        : <String, dynamic>{};
 
     final eventType = event['event_type'] as String? ?? '';
 

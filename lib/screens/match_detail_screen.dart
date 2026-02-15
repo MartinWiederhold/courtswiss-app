@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/carpool_offer.dart';
 import '../models/dinner_rsvp.dart';
@@ -11,10 +12,12 @@ import '../services/match_service.dart';
 import '../services/lineup_service.dart';
 import '../services/sub_request_service.dart';
 import '../services/team_player_service.dart';
+import '../theme/cs_theme.dart';
 import '../utils/lineup_reorder.dart';
 import '../utils/lineup_rules.dart';
 import '../utils/sub_request_timeout.dart';
 import '../widgets/lineup_reorder_list.dart';
+import '../widgets/ui/ui.dart';
 import 'create_match_screen.dart';
 
 class MatchDetailScreen extends StatefulWidget {
@@ -61,12 +64,15 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
   // ── Carpool state ──
   List<CarpoolOffer> _carpoolOffers = [];
+  final Set<String> _expandedCarpoolOffers = {};
   RealtimeChannel? _carpoolOffersChannel;
   RealtimeChannel? _carpoolPassengersChannel;
 
   // ── Dinner RSVP state ──
   List<DinnerRsvp> _dinnerRsvps = [];
   String? _myDinnerStatus; // 'yes' | 'no' | 'maybe' | null
+  bool _dinnerExpanded = false;
+  bool _dinnerUpdating = false;
 
   // ── Expenses state ──
   List<Expense> _expenses = [];
@@ -78,6 +84,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   int _starterCount = 6;
   int _reserveCount = 3;
   bool _includeMaybe = false;
+
+  /// Tab index for segment tabs.
+  int _tabIndex = 0;
 
   /// Live match data (may be updated after edit).
   late Map<String, dynamic> _match;
@@ -116,7 +125,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             value: widget.matchId,
           ),
           callback: (payload) {
-            // Reload lineup when slots are changed (e.g. by auto-promotion trigger)
             debugPrint('LINEUP_REALTIME: slot change detected, reloading…');
             _reloadLineup();
           },
@@ -142,7 +150,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           _includeMaybe = (lineup['include_maybe'] as bool?) ?? false;
         }
       });
-      // Recompute rule-violation warnings after fresh data.
       _recomputeLineupViolations(slots);
     } catch (e) {
       debugPrint('Lineup reload error: $e');
@@ -154,7 +161,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   // ═══════════════════════════════════════════════════════════
 
   void _subscribeCarpoolChanges() {
-    // Channel 1: cs_carpool_offers changes (create/update/delete offer)
     _carpoolOffersChannel = _supabase
         .channel('carpool_offers:${widget.matchId}')
         .onPostgresChanges(
@@ -173,9 +179,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         )
         .subscribe();
 
-    // Channel 2: cs_carpool_passengers changes (join/leave)
-    // No match_id filter possible here, so we listen to all changes
-    // and re-fetch (cheap — only rows for this match).
     _carpoolPassengersChannel = _supabase
         .channel('carpool_passengers:${widget.matchId}')
         .onPostgresChanges(
@@ -190,11 +193,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         .subscribe();
   }
 
-  /// Reload carpool offers (with passengers) and update state.
-  ///
-  /// When [rethrow_] is true the error is re-thrown after logging so the
-  /// caller (e.g. create-flow) can show a meaningful message.
-  /// Background / realtime callers leave it false (default).
   Future<void> _reloadCarpool({bool rethrow_ = false}) async {
     final uid = _supabase.auth.currentUser?.id;
     debugPrint('CARPOOL_LOAD: matchId=${widget.matchId} uid=$uid');
@@ -215,7 +213,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     }
   }
 
-  /// Reload dinner RSVPs and update state.
   Future<void> _reloadDinner() async {
     try {
       final rsvps = await DinnerService.getRsvps(widget.matchId);
@@ -237,7 +234,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     }
   }
 
-  /// Reload expenses and update state.
   Future<void> _reloadExpenses() async {
     try {
       final expenses = await ExpenseService.listExpenses(widget.matchId);
@@ -257,17 +253,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   bool get _isAdmin {
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return false;
-    return _members
-        .any((m) => m['user_id'] == uid && m['role'] == 'captain');
+    return _members.any((m) => m['user_id'] == uid && m['role'] == 'captain');
   }
 
-  /// Central gate for Drag & Drop reorder.
-  /// True only when ALL of these hold:
-  ///  - data loaded (not in initial load)
-  ///  - lineup exists with slots
-  ///  - lineup status is 'draft' (NOT published / locked)
-  ///  - user is captain
-  ///  - no generate or publish operation in flight
   bool get _canReorderLineup =>
       !_loading &&
       _lineupSlots.isNotEmpty &&
@@ -276,8 +264,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       !_lineupGenerating &&
       !_lineupPublishing;
 
-  /// Guard: prevents parallel _load() calls (e.g. rapid refreshes,
-  /// sub-request response + automatic reload overlapping).
   bool _loadInProgress = false;
 
   Future<void> _load() async {
@@ -298,22 +284,24 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         final rows = await _supabase
             .from('cs_team_members')
             .select(
-                'user_id, role, nickname, is_playing, ranking, '
-                'cs_app_profiles(display_name, email, avatar_path)')
+              'user_id, role, nickname, is_playing, ranking, '
+              'cs_app_profiles(display_name, email, avatar_path)',
+            )
             .eq('team_id', widget.teamId)
             .order('created_at', ascending: true);
         members = List<Map<String, dynamic>>.from(rows);
       } catch (_) {
         final rows = await _supabase
             .from('cs_team_members')
-            .select(
-                'user_id, role, nickname, is_playing, ranking, created_at')
+            .select('user_id, role, nickname, is_playing, ranking, created_at')
             .eq('team_id', widget.teamId)
             .order('created_at', ascending: true);
         members = List<Map<String, dynamic>>.from(rows);
 
-        final uids =
-            members.map((m) => m['user_id'] as String).toSet().toList();
+        final uids = members
+            .map((m) => m['user_id'] as String)
+            .toSet()
+            .toList();
         if (uids.isNotEmpty) {
           final pRows = await _supabase
               .from('cs_app_profiles')
@@ -349,7 +337,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         lineup = await LineupService.getLineup(widget.matchId);
         if (lineup != null) {
           lineupSlots = await LineupService.getSlots(widget.matchId);
-          // Read settings from lineup row
           _starterCount = (lineup['starters_count'] as int?) ?? 6;
           _reserveCount = (lineup['reserves_count'] as int?) ?? 3;
           _includeMaybe = (lineup['include_maybe'] as bool?) ?? false;
@@ -359,17 +346,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       }
 
       // 6. Sub requests
-      //    No cron available → expire stale requests on every load.
-      //    expireStale() is idempotent and swallows errors internally,
-      //    so it won't block the rest of the load sequence.
       List<Map<String, dynamic>> subRequests = [];
       List<Map<String, dynamic>> myPendingSubRequests = [];
       try {
         await SubRequestService.expireStale();
         subRequests = await SubRequestService.listForMatch(widget.matchId);
-        myPendingSubRequests =
-            await SubRequestService.listMyPendingRequests();
-        // Filter to this match only
+        myPendingSubRequests = await SubRequestService.listMyPendingRequests();
         myPendingSubRequests = myPendingSubRequests
             .where((r) => r['match_id'] == widget.matchId)
             .toList();
@@ -391,26 +373,16 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         _loading = false;
       });
 
-      // Recompute rule-violation warnings after initial load.
       _recomputeLineupViolations(lineupSlots);
 
-      // Load carpool offers (non-blocking, separate from main data)
       _reloadCarpool();
-
-      // Load dinner RSVPs (non-blocking)
       _reloadDinner();
-
-      // Load expenses (non-blocking)
       _reloadExpenses();
-
-      // Resolve avatars asynchronously (non-blocking)
       _resolveAvatarUrls();
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     } finally {
       _loadInProgress = false;
     }
@@ -420,10 +392,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   //  Avatar resolution
   // ═══════════════════════════════════════════════════════════
 
-  /// Collects all user IDs from members + claimed players, fetches their
-  /// avatar_path from cs_app_profiles, and batch-resolves signed URLs.
   Future<void> _resolveAvatarUrls() async {
-    // 1. Collect all user IDs
     final allUserIds = <String>{};
     for (final m in _members) {
       final uid = m['user_id'] as String?;
@@ -439,7 +408,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     }
 
     try {
-      // 2. Batch-fetch avatar_path from profiles
       final profileRows = await _supabase
           .from('cs_app_profiles')
           .select('user_id, avatar_path')
@@ -459,7 +427,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         return;
       }
 
-      // 3. Batch-resolve signed URLs
       final uniquePaths = pathsByUid.values.toSet().toList();
       final signedMap = await AvatarService.createSignedUrls(uniquePaths);
 
@@ -475,12 +442,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     }
   }
 
-  /// Get signed avatar URL for a user, or null.
   String? _avatarUrlForUser(String userId) => _avatarUrls[userId];
 
-  /// Build initials from display name (e.g. "Max Muster" → "MM").
   String _initialsForUser(String userId) {
-    // 1. Try claimed player slot
     final claimed = _claimedMap[userId];
     if (claimed != null) {
       final f = (claimed['first_name'] as String? ?? '');
@@ -490,7 +454,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       }
       if (f.isNotEmpty) return f[0].toUpperCase();
     }
-    // 2. Try profile display_name
     final profile = _profiles[userId];
     if (profile != null) {
       final name = profile['display_name'] as String? ?? '';
@@ -502,9 +465,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         return name[0].toUpperCase();
       }
     }
-    // 3. Try member name resolution
-    final member =
-        _members.where((m) => m['user_id'] == userId).firstOrNull;
+    final member = _members.where((m) => m['user_id'] == userId).firstOrNull;
     if (member != null) {
       final nick = member['nickname'] as String?;
       if (nick != null && nick.isNotEmpty) return nick[0].toUpperCase();
@@ -519,18 +480,16 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     return '?';
   }
 
-  /// Build a CircleAvatar for a user: signed image or initials fallback.
   Widget _userAvatar(String userId, {double radius = 16}) {
     final url = _avatarUrlForUser(userId);
     final initials = _initialsForUser(userId);
 
     return CircleAvatar(
       radius: radius,
-      backgroundColor: Colors.grey.shade200,
+      backgroundColor: CsColors.gray200,
       backgroundImage: url != null ? NetworkImage(url) : null,
       onBackgroundImageError: url != null
           ? (e, s) {
-              // Silently handle broken image
               setState(() => _avatarUrls.remove(userId));
             }
           : null,
@@ -540,7 +499,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: radius * 0.75,
-                color: Colors.grey.shade700,
+                color: CsColors.gray600,
               ),
             )
           : null,
@@ -551,23 +510,50 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   //  Availability
   // ═══════════════════════════════════════════════════════════
 
+  /// In-flight flag to disable buttons while the API call runs.
+  bool _availUpdating = false;
+
   Future<void> _setAvailability(String status) async {
+    if (_availUpdating) return;
     final old = _myStatus;
-    setState(() => _myStatus = status);
+
+    // Haptic feedback (selection click).
+    HapticFeedback.selectionClick();
+
+    // Optimistic UI update — instant.
+    setState(() {
+      _myStatus = status;
+      _availUpdating = true;
+    });
+
     try {
       await MatchService.setAvailability(
         matchId: widget.matchId,
         status: status,
       );
-      // Full reload: the DB trigger may have auto-promoted if we set 'no'
-      // while being a starter in a published lineup.
-      await _load();
+      // Lightweight reload: only availability list (no full-page _load).
+      final avail = await MatchService.listAvailability(widget.matchId);
+      if (!mounted) return;
+      final uid = _supabase.auth.currentUser?.id;
+      String? confirmed;
+      for (final a in avail) {
+        if (a['user_id'] == uid) {
+          confirmed = a['status'] as String?;
+          break;
+        }
+      }
+      setState(() {
+        _availability = avail;
+        _myStatus = confirmed ?? status;
+        _availUpdating = false;
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _myStatus = old);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      setState(() {
+        _myStatus = old;
+        _availUpdating = false;
+      });
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
@@ -576,41 +562,60 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Future<void> _generateLineup() async {
-    // ── Confirm-dialog with settings ──
     int tmpStarters = _starterCount;
     int tmpReserves = _reserveCount;
     bool tmpMaybe = _includeMaybe;
 
-    final confirm = await showDialog<bool>(
+    final confirm = await showModalBottomSheet<bool>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
-          title: const Text('Aufstellung generieren'),
-          content: SingleChildScrollView(
+        builder: (ctx, setD) {
+          return CsBottomSheetForm(
+            title: 'Aufstellung generieren',
+            ctaLabel: 'Generieren',
+            onCta: () => Navigator.pop(ctx, true),
+            secondaryLabel: 'Abbrechen',
+            onSecondary: () => Navigator.pop(ctx, false),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Die Aufstellung wird anhand des Rankings und '
                   'der Verfügbarkeiten erstellt.\n'
                   'Du kannst danach manuell tauschen.\n\n'
                   'Eine bestehende Aufstellung wird überschrieben.',
+                  style: CsTextStyles.bodySmall,
                 ),
                 const SizedBox(height: 20),
-                // Starter count
                 Row(
                   children: [
-                    const Expanded(child: Text('Starter')),
+                    const Expanded(
+                      child: Text(
+                        'Starter',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.remove_circle_outline),
                       onPressed: tmpStarters > 1
                           ? () => setD(() => tmpStarters--)
                           : null,
                     ),
-                    Text('$tmpStarters',
+                    SizedBox(
+                      width: 32,
+                      child: Text(
+                        '$tmpStarters',
+                        textAlign: TextAlign.center,
                         style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16)),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.add_circle_outline),
                       onPressed: tmpStarters < 12
@@ -619,19 +624,31 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                     ),
                   ],
                 ),
-                // Reserve count
                 Row(
                   children: [
-                    const Expanded(child: Text('Ersatz')),
+                    const Expanded(
+                      child: Text(
+                        'Ersatz',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.remove_circle_outline),
                       onPressed: tmpReserves > 0
                           ? () => setD(() => tmpReserves--)
                           : null,
                     ),
-                    Text('$tmpReserves',
+                    SizedBox(
+                      width: 32,
+                      child: Text(
+                        '$tmpReserves',
+                        textAlign: TextAlign.center,
                         style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16)),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.add_circle_outline),
                       onPressed: tmpReserves < 6
@@ -643,28 +660,17 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Maybe berücksichtigen'),
-                  subtitle: const Text(
-                      'Spieler mit „Vielleicht" als Auffüllung'),
+                title: const Text('Unsichere berücksichtigen'),
+                subtitle: const Text(
+                    'Spieler mit „Unsicher" werden ergänzend aufgestellt.',
+                  ),
                   value: tmpMaybe,
                   onChanged: (v) => setD(() => tmpMaybe = v),
                 ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Abbrechen'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx, true);
-              },
-              child: const Text('Generieren'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
     if (confirm != true) return;
@@ -684,21 +690,15 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         includeMaybe: tmpMaybe,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Entwurf erstellt: '
-            '${result['starters']} Starter, '
-            '${result['reserves']} Ersatz ✅',
-          ),
-        ),
+      CsToast.success(context,
+        'Aufstellung erstellt: '
+        '${result['starters']} Starter, '
+        '${result['reserves']} Ersatz',
       );
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     } finally {
       if (mounted) setState(() => _lineupGenerating = false);
     }
@@ -728,7 +728,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   }
 
   Future<void> _swapSlots(
-      Map<String, dynamic> from, Map<String, dynamic> to) async {
+    Map<String, dynamic> from,
+    Map<String, dynamic> to,
+  ) async {
     try {
       await LineupService.moveSlot(
         matchId: widget.matchId,
@@ -740,9 +742,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
@@ -750,26 +750,18 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   //  Lineup: Drag & Drop reorder (via LineupReorderList widget)
   // ═══════════════════════════════════════════════════════════
 
-  /// Called by [LineupReorderList] to persist a drag & drop reorder.
-  ///
-  /// **Error contract**: completes normally on success; THROWS on failure.
-  /// The widget catches the exception and rolls back the optimistic UI.
-  /// No additional setState here — the widget is responsible for UI state.
   Future<void> _onPersistReorder(
     List<Map<String, dynamic>> reorderedSlots,
     MoveStep step,
   ) async {
-    // ── Defensive gate: if state changed between drag-start and
-    //    persist (e.g. lineup was published in the meantime), bail
-    //    out silently — the widget will keep its optimistic state
-    //    until the next parent rebuild refreshes the list.
     if (!_canReorderLineup) {
-      debugPrint('LINEUP_REORDER skip: canReorder=false '
-          '(state changed during drag)');
+      debugPrint(
+        'LINEUP_REORDER skip: canReorder=false '
+        '(state changed during drag)',
+      );
       return;
     }
 
-    // Single await — exception propagates to widget for rollback.
     await LineupService.reorderLineup(
       matchId: widget.matchId,
       fromType: step.fromType,
@@ -778,20 +770,14 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       toPos: step.toPos,
     );
 
-    // Server state is source of truth — reload to sync optimistic UI
-    // (for adjacent swaps optimistic == server; for multi-position drags
-    // the reload corrects any shift-vs-swap discrepancy).
     if (mounted) await _reloadLineup();
   }
 
-  /// Called after a successful reorder – recompute rule-violation warnings.
   void _onReorderComplete(List<Map<String, dynamic>> newOrder) {
     debugPrint('LINEUP_REORDER_COMPLETE: ${newOrder.length} slots');
     _recomputeLineupViolations(newOrder);
   }
 
-  /// (Re-)compute lineup rule violations from [slots].
-  /// Can be called with server-fresh or optimistic slots.
   void _recomputeLineupViolations([List<Map<String, dynamic>>? slots]) {
     final source = slots ?? _lineupSlots;
     final ordered = LineupService.buildOrderedSlots(source);
@@ -810,7 +796,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final currentLocked = slot['locked'] == true;
     final newLocked = !currentLocked;
 
-    // Optimistic update
     setState(() => slot['locked'] = newLocked);
 
     try {
@@ -818,9 +803,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => slot['locked'] = currentLocked);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
@@ -829,26 +812,37 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Future<void> _publishLineup() async {
-    final ok = await showDialog<bool>(
+    final ok = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Aufstellung veröffentlichen?'),
-        content: const Text(
-          'Alle Team-Mitglieder werden über die '
-          'Aufstellung informiert (In-App + Push).\n\n'
-          'Möchtest du die Aufstellung jetzt senden?',
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (ctx) => CsBottomSheetForm(
+        title: 'Aufstellung veröffentlichen?',
+        ctaLabel: 'Senden',
+        onCta: () => Navigator.pop(ctx, true),
+        secondaryLabel: 'Abbrechen',
+        onSecondary: () => Navigator.pop(ctx, false),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.send, size: 40, color: CsColors.blue),
+            const SizedBox(height: 12),
+            Text(
+              'Alle Team-Mitglieder werden über die '
+              'Aufstellung informiert (In-App + Push).',
+              style: CsTextStyles.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Möchtest du die Aufstellung jetzt senden?',
+              style: CsTextStyles.bodySmall.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Zurück'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () => Navigator.pop(ctx, true),
-            icon: const Icon(Icons.send),
-            label: const Text('Senden'),
-          ),
-        ],
       ),
     );
     if (ok != true) return;
@@ -858,18 +852,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       final result = await LineupService.publishLineup(widget.matchId);
       if (!mounted) return;
       final recipients = result['recipients'] ?? 0;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Aufstellung veröffentlicht – $recipients Benachrichtigungen gesendet ✅'),
-        ),
+      CsToast.success(context,
+        'Aufstellung veröffentlicht – $recipients Benachrichtigungen gesendet',
       );
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     } finally {
       if (mounted) setState(() => _lineupPublishing = false);
     }
@@ -879,7 +868,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   //  Sub-request actions
   // ═══════════════════════════════════════════════════════════
 
-  /// Captain creates a sub request for an absent starter.
   Future<void> _createSubRequest(String originalUserId) async {
     try {
       final result = await SubRequestService.createRequest(
@@ -889,30 +877,19 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       if (!mounted) return;
       final success = result['success'] == true;
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Ersatzanfrage an ${result['substitute_name']} gesendet ✅'),
-          ),
-        );
+        CsToast.success(context, 'Ersatzanfrage an ${result['substitute_name']} gesendet');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] as String? ??
-                'Kein Ersatzspieler gefunden'),
-          ),
+        CsToast.info(context,
+          result['message'] as String? ?? 'Kein verfügbarer Ersatzspieler gefunden.',
         );
       }
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
-  /// Substitute responds to a pending request.
   Future<void> _respondSubRequest(String requestId, String response) async {
     try {
       final result = await SubRequestService.respond(
@@ -923,25 +900,18 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       final success = result['success'] == true;
       if (success) {
         final msg = response == 'accepted'
-            ? 'Ersatz bestätigt ✅'
+            ? 'Ersatzanfrage angenommen'
             : 'Ersatzanfrage abgelehnt';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg)),
-        );
+        CsToast.success(context, msg);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text(result['message'] as String? ?? 'Fehler aufgetreten'),
-          ),
+        CsToast.error(context,
+          result['message'] as String? ?? 'Etwas ist schiefgelaufen.',
         );
       }
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
@@ -953,10 +923,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => CreateMatchScreen(
-          teamId: widget.teamId,
-          existingMatch: _match,
-        ),
+        builder: (_) =>
+            CreateMatchScreen(teamId: widget.teamId, existingMatch: _match),
       ),
     );
     if (changed == true) {
@@ -975,26 +943,31 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   }
 
   Future<void> _deleteMatch() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Spiel löschen?'),
-        content: Text(
-          'Möchtest du das Spiel gegen '
-          '"${_match['opponent'] ?? '?'}" wirklich löschen?\n'
-          'Alle Verfügbarkeiten und Aufstellungen gehen verloren.',
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (ctx) => CsBottomSheetForm(
+        title: 'Spiel löschen?',
+        ctaLabel: 'Löschen',
+        onCta: () => Navigator.pop(ctx, true),
+        secondaryLabel: 'Abbrechen',
+        onSecondary: () => Navigator.pop(ctx, false),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.delete_forever, size: 40, color: CsColors.error),
+            const SizedBox(height: 12),
+            Text(
+              'Möchtest du das Spiel gegen '
+              '"${_match['opponent'] ?? '?'}" wirklich löschen?\n\n'
+              'Alle Verfügbarkeiten und Aufstellungen gehen verloren.',
+              style: CsTextStyles.bodySmall,
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
-          ),
-        ],
       ),
     );
     if (confirmed != true) return;
@@ -1002,15 +975,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     try {
       await MatchService.deleteMatch(widget.matchId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Spiel gelöscht ✅')),
-      );
+      CsToast.success(context, 'Spiel gelöscht');
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
@@ -1050,7 +1019,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     return userId ?? '–';
   }
 
-  /// Display name for a lineup slot – embedded cs_team_players or fallback.
   String _slotUserName(Map<String, dynamic> slot) {
     final label = LineupService.slotLabel(slot);
     if (label != '?') return label;
@@ -1063,8 +1031,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         final r = TeamPlayerService.rankingLabel(s);
         return r.isNotEmpty ? '$n · $r' : n;
       }
-      final member =
-          _members.where((m) => m['user_id'] == userId).firstOrNull;
+      final member = _members.where((m) => m['user_id'] == userId).firstOrNull;
       if (member != null) return _memberName(member);
       return userId.length > 8 ? '${userId.substring(0, 8)}…' : userId;
     }
@@ -1095,22 +1062,105 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   //  BUILD
   // ═══════════════════════════════════════════════════════════
 
+  // ── Tab labels for segment tabs ──
+  static const _tabLabels = [
+    'Übersicht',
+    'Aufstellung',
+    'Mehr',
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final m = _match;
+
+    return CsScaffoldList(
+      appBar: CsGlassAppBar(
+        title: 'vs ${m['opponent'] ?? '?'}',
+        actions: [
+          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+          if (!_loading && _isAdmin)
+            PopupMenuButton<String>(
+              popUpAnimationStyle: CsMotion.dialog,
+              onSelected: (value) {
+                if (value == 'edit') _editMatch();
+                if (value == 'delete') _deleteMatch();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit_outlined, size: 18, color: CsColors.gray900),
+                      SizedBox(width: 8),
+                      Text('Bearbeiten'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline, size: 18, color: CsColors.error),
+                      SizedBox(width: 8),
+                      Text('Löschen'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+      body: _loading
+          ? _buildLoadingSkeleton()
+          : Column(
+              children: [
+                // ── Segment tabs ──
+                CsSegmentTabs(
+                  labels: _tabLabels,
+                  selectedIndex: _tabIndex,
+                  onChanged: (i) => setState(() => _tabIndex = i),
+                ),
+                // ── Tab content ──
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: CsDurations.normal,
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child: _buildTabContent(_tabIndex),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildTabContent(int index) {
+    return switch (index) {
+      0 => _buildOverviewTab(),
+      1 => _buildLineupTab(),
+      2 => _buildMoreTab(),
+      _ => const SizedBox.shrink(),
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  TAB 0 — Overview
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildOverviewTab() {
     final m = _match;
     final isHome = m['is_home'] == true;
     final matchAt = DateTime.tryParse(m['match_at'] ?? '')?.toLocal();
     final dateStr = matchAt != null
         ? '${matchAt.day.toString().padLeft(2, '0')}.'
-          '${matchAt.month.toString().padLeft(2, '0')}.'
-          '${matchAt.year}'
+              '${matchAt.month.toString().padLeft(2, '0')}.'
+              '${matchAt.year}'
         : '–';
     final timeStr = matchAt != null
         ? '${matchAt.hour.toString().padLeft(2, '0')}:'
-          '${matchAt.minute.toString().padLeft(2, '0')}'
+              '${matchAt.minute.toString().padLeft(2, '0')}'
         : '';
 
-    // Availability counts
     int yes = 0, no = 0, maybe = 0;
     for (final a in _availability) {
       switch (a['status']) {
@@ -1123,161 +1173,312 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       }
     }
     final noResponse = _members.length - yes - no - maybe;
+    final total = _members.length;
 
-    final lineupStatus = _lineup?['status'] as String?;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('vs ${m['opponent'] ?? '?'}'),
-        actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-          if (!_loading && _isAdmin)
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'edit') _editMatch();
-                if (value == 'delete') _deleteMatch();
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                    value: 'edit', child: Text('✏️ Bearbeiten')),
-                PopupMenuItem(
-                    value: 'delete', child: Text('🗑️ Löschen')),
-              ],
-            ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
+    return ListView(
+      key: const ValueKey('tab_overview'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
+        // ── Match info card ──
+        CsAnimatedEntrance(
+          child: CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200,
+            boxShadow: CsShadows.soft,
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Match info card ──────────────────────
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${m['opponent'] ?? '?'} '
-                          '(${isHome ? 'Heim' : 'Auswärts'})',
-                          style: Theme.of(context).textTheme.titleLarge,
+                Row(
+                  children: [
+                    Icon(Icons.sports_tennis, color: CsColors.gray900, size: 20),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: CsColors.black,
+                        borderRadius: BorderRadius.circular(CsRadii.full),
+                      ),
+                      child: Text(
+                        isHome ? 'Heim' : 'Auswärts',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: CsColors.white,
+                          letterSpacing: 0.2,
                         ),
-                        const SizedBox(height: 8),
-                        Row(children: [
-                          const Icon(Icons.calendar_today, size: 16),
-                          const SizedBox(width: 6),
-                          Text('$dateStr  $timeStr'),
-                        ]),
-                        if (m['location'] != null &&
-                            (m['location'] as String).isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Row(children: [
-                            const Icon(Icons.location_on, size: 16),
-                            const SizedBox(width: 6),
-                            Expanded(
-                                child: Text(m['location'] as String)),
-                          ]),
-                        ],
-                        if (m['note'] != null &&
-                            (m['note'] as String).isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Row(children: [
-                            const Icon(Icons.notes, size: 16),
-                            const SizedBox(width: 6),
-                            Expanded(
-                                child: Text(m['note'] as String)),
-                          ]),
-                        ],
-                      ],
+                      ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  m['opponent'] ?? '?',
+                  style: CsTextStyles.titleMedium.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: CsColors.gray900,
                   ),
                 ),
+                const SizedBox(height: 8),
+                _cardInfoRow(Icons.calendar_today, '$dateStr  $timeStr'),
+                if (m['location'] != null &&
+                    (m['location'] as String).isNotEmpty)
+                  _cardInfoRow(Icons.location_on, m['location'] as String),
+                if (m['note'] != null && (m['note'] as String).isNotEmpty)
+                  _cardInfoRow(Icons.notes, m['note'] as String),
+                const SizedBox(height: 10),
+                CsProgressRow(
+                  label: '$yes von $total zugesagt',
+                  value: '$yes / $total',
+                  progress: total > 0 ? yes / total : 0,
+                  color: CsColors.emerald,
+                  onDark: false,
+                ),
+              ],
+            ),
+          ),
+        ),
 
-                const SizedBox(height: 20),
+        const SizedBox(height: 12),
 
-                // ── My availability ─────────────────────
-                Text('Meine Verfügbarkeit',
-                    style: Theme.of(context).textTheme.titleMedium),
+        // ── My availability ──
+        CsAnimatedEntrance(
+          delay: const Duration(milliseconds: 80),
+          child: CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200,
+            boxShadow: CsShadows.soft,
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Meine Verfügbarkeit',
+                  style: CsTextStyles.titleSmall.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: CsColors.gray900,
+                  ),
+                ),
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    _availButton('yes', '✅ Kann', Colors.green),
-                    const SizedBox(width: 8),
-                    _availButton('no', '❌ Kann nicht', Colors.red),
-                    const SizedBox(width: 8),
+                    _availButton('yes', 'Zugesagt', CsColors.success, Icons.check_circle_outline),
+                    const SizedBox(width: 6),
+                    _availButton('no', 'Abgesagt', CsColors.error, Icons.cancel_outlined),
+                    const SizedBox(width: 6),
                     _availButton(
-                        'maybe', '❓ Vielleicht', Colors.orange),
+                      'maybe',
+                      'Unsicher',
+                      CsColors.warning,
+                      Icons.help_outline,
+                    ),
                   ],
                 ),
-
-                const SizedBox(height: 24),
-
-                // ── Availability summary ────────────────
-                Text('Verfügbarkeiten',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    _countChip(
-                        '✅ $yes', Colors.green.shade50, Colors.green),
-                    _countChip(
-                        '❌ $no', Colors.red.shade50, Colors.red),
-                    _countChip('❓ $maybe', Colors.orange.shade50,
-                        Colors.orange),
-                    _countChip('– $noResponse', Colors.grey.shade100,
-                        Colors.grey),
-                  ],
-                ),
-
-                const Divider(height: 36),
-
-                // ═════════════════════════════════════════
-                // ── AUFSTELLUNG ─────────────────────────
-                // ═════════════════════════════════════════
-                _buildLineupSection(lineupStatus),
-
-                // ═════════════════════════════════════════
-                // ── SUB REQUESTS ──────────────────────
-                // ═════════════════════════════════════════
-                if (_myPendingSubRequests.isNotEmpty ||
-                    _subRequests.isNotEmpty) ...[
-                  const Divider(height: 36),
-                  _buildSubRequestSection(),
-                ],
-
-                const Divider(height: 36),
-
-                // ═════════════════════════════════════════
-                // ── CARPOOL ────────────────────────────
-                // ═════════════════════════════════════════
-                _buildCarpoolSection(),
-
-                const Divider(height: 36),
-
-                // ═════════════════════════════════════════
-                // ── DINNER RSVP ──────────────────────────
-                // ═════════════════════════════════════════
-                _buildDinnerSection(),
-
-                const Divider(height: 36),
-
-                // ═════════════════════════════════════════
-                // ── EXPENSES / SPESEN ────────────────────
-                // ═════════════════════════════════════════
-                _buildExpensesSection(),
-
-                const Divider(height: 36),
-
-                // ── Player availability list ────────────
-                Text('Spieler-Status',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                ..._members.map(_buildPlayerStatusTile),
               ],
             ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // ── Availability summary card ──
+        CsAnimatedEntrance(
+          delay: const Duration(milliseconds: 120),
+          child: CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200,
+            boxShadow: CsShadows.soft,
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Verfügbarkeiten',
+                  style: CsTextStyles.titleSmall.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: CsColors.gray900,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _neutralCount(Icons.check_circle_outline, yes),
+                    const SizedBox(width: 12),
+                    _neutralCount(Icons.cancel_outlined, no),
+                    const SizedBox(width: 12),
+                    _neutralCount(Icons.help_outline, maybe),
+                    const SizedBox(width: 12),
+                    _neutralCount(Icons.remove_circle_outline, noResponse),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                CsProgressRow(
+                  label: '${yes + no + maybe} von $total haben geantwortet',
+                  value: '${yes + no + maybe} / $total',
+                  progress: total > 0 ? (yes + no + maybe) / total : 0,
+                  color: CsColors.emerald,
+                  onDark: false,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // ── Player status list ──
+        CsAnimatedEntrance(
+          delay: const Duration(milliseconds: 160),
+          child: CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200,
+            boxShadow: CsShadows.soft,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    'Verfügbarkeiten der Spieler',
+                    style: CsTextStyles.titleSmall.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: CsColors.gray900,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                ..._members.asMap().entries.map((entry) {
+                  return _buildPlayerStatusTile(entry.value);
+                }),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // ── Ersatz section (moved from "Mehr" tab) ──
+        _sectionHeader(Icons.swap_horiz, 'Ersatz'),
+        CsAnimatedEntrance(
+          delay: const Duration(milliseconds: 200),
+          child: (_myPendingSubRequests.isNotEmpty || _subRequests.isNotEmpty)
+              ? _buildSubRequestSection()
+              : _compactEmptyState('Keine Ersatzanfragen vorhanden. Bei Absagen kannst du hier Ersatz anfragen.'),
+        ),
+      ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  TAB 1 — Lineup
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildLineupTab() {
+    final lineupStatus = _lineup?['status'] as String?;
+    return ListView(
+      key: const ValueKey('tab_lineup'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
+        CsAnimatedEntrance(
+          child: _buildLineupSection(lineupStatus),
+        ),
+      ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  TAB 2 — Mehr (Fahrten / Essen / Spesen)
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildMoreTab() {
+    return ListView(
+      key: const ValueKey('tab_more'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      children: [
+        // ── Section: Fahrten ──
+        _sectionHeader(Icons.directions_car, 'Fahrten'),
+        CsAnimatedEntrance(
+          delay: const Duration(milliseconds: 60),
+          child: _buildCarpoolSection(),
+        ),
+
+        const SizedBox(height: 14),
+
+        // ── Section: Essen ──
+        _sectionHeader(Icons.restaurant, 'Essen'),
+        CsAnimatedEntrance(
+          delay: const Duration(milliseconds: 120),
+          child: _buildDinnerSection(),
+        ),
+
+        const SizedBox(height: 14),
+
+        // ── Section: Spesen ──
+        _sectionHeader(Icons.payments, 'Spesen'),
+        CsAnimatedEntrance(
+          delay: const Duration(milliseconds: 180),
+          child: _buildExpensesSection(),
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionHeader(IconData icon, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6, top: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: CsColors.gray500),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: CsTextStyles.titleSmall.copyWith(
+              color: CsColors.gray700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingSkeleton() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const CsSkeletonMatchHeader(),
+          const SizedBox(height: 14),
+          const CsSkeletonCard(),
+          const SizedBox(height: 14),
+          const CsSkeletonSection(itemCount: 4),
+        ],
+      ),
+    );
+  }
+
+  Widget _compactEmptyState(String text) {
+    return CsLightCard(
+      color: CsColors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 16, color: CsColors.gray400),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: CsTextStyles.bodySmall.copyWith(
+                color: CsColors.gray500,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1287,195 +1488,226 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
   Widget _buildLineupSection(String? lineupStatus) {
     final ordered = _orderedSlots;
-    final starters =
-        ordered.where((s) => s['slot_type'] == 'starter').toList();
-    final reserves =
-        ordered.where((s) => s['slot_type'] == 'reserve').toList();
+    final starters = ordered.where((s) => s['slot_type'] == 'starter').toList();
+    final reserves = ordered.where((s) => s['slot_type'] == 'reserve').toList();
 
     final isPublished = lineupStatus == 'published';
     final isDraft = lineupStatus == 'draft';
+    final totalNeeded = _starterCount + _reserveCount;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Header row ──
-        Row(
-          children: [
-            Expanded(
-              child: Row(
+        // ── Main lineup card ──
+        CsCard(
+          backgroundColor: CsColors.white,
+          borderColor: CsColors.gray200,
+          boxShadow: CsShadows.soft,
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header row ──
+              Row(
                 children: [
-                  Text('Aufstellung',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  if (lineupStatus != null) ...[
-                    const SizedBox(width: 8),
-                    _lineupStatusBadge(lineupStatus),
-                  ],
+                  Icon(Icons.format_list_numbered, color: CsColors.gray900, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Aufstellung',
+                          style: CsTextStyles.titleSmall.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: CsColors.gray900,
+                          ),
+                        ),
+                        if (lineupStatus != null)
+                          Text(
+                            isDraft ? 'Entwurf' : 'Veröffentlicht',
+                            style: CsTextStyles.bodySmall.copyWith(
+                              fontSize: 12,
+                              color: CsColors.gray500,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (lineupStatus != null) _lineupStatusBadge(lineupStatus),
                 ],
               ),
-            ),
-            if (_isAdmin)
-              ElevatedButton.icon(
-                onPressed:
-                    _lineupGenerating ? null : _generateLineup,
-                icon: _lineupGenerating
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.auto_fix_high, size: 18),
-                label: Text(
-                    _lineupSlots.isEmpty ? 'Generieren' : 'Neu'),
-              ),
-          ],
+
+              if (_lineupSlots.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                CsProgressRow(
+                  label: (starters.length + reserves.length) >= totalNeeded
+                      ? 'Alle Plätze besetzt'
+                      : '${totalNeeded - (starters.length + reserves.length)} ${(totalNeeded - (starters.length + reserves.length)) == 1 ? 'Platz' : 'Plätze'} frei',
+                  value: '${starters.length + reserves.length} / $totalNeeded',
+                  progress: totalNeeded > 0
+                      ? (starters.length + reserves.length) / totalNeeded
+                      : 0,
+                  color: CsColors.emerald,
+                  onDark: false,
+                ),
+              ],
+
+              if (_isAdmin) ...[
+                const SizedBox(height: 12),
+                CsPrimaryButton(
+                  onPressed: _lineupGenerating ? null : _generateLineup,
+                  loading: _lineupGenerating,
+                  icon: const Icon(Icons.auto_fix_high, size: 18),
+                  label: _lineupSlots.isEmpty ? 'Generieren' : 'Neu generieren',
+                ),
+              ],
+            ],
+          ),
         ),
-        const SizedBox(height: 12),
 
         // ── Content ──
         if (_lineupSlots.isEmpty) ...[
-          // No lineup exists
+          const SizedBox(height: 8),
           if (!_isAdmin)
-            const Text(
-              'Noch keine Aufstellung.',
-              style: TextStyle(
-                  color: Colors.grey, fontStyle: FontStyle.italic),
-            )
-          else
-            const Text(
-              'Noch keine Aufstellung erstellt.\n'
-              'Klicke „Generieren" um eine zu erstellen.',
-              style: TextStyle(
-                  color: Colors.grey, fontStyle: FontStyle.italic),
-            ),
-        ] else ...[
-          // Non-admin sees draft hint
-          if (!_isAdmin && isDraft) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border:
-                    Border.all(color: Colors.orange.shade200),
-              ),
-              child: const Row(
+            CsLightCard(
+              color: CsColors.white,
+              padding: const EdgeInsets.all(16),
+              child: Row(
                 children: [
-                  Icon(Icons.hourglass_top,
-                      color: Colors.orange, size: 20),
-                  SizedBox(width: 8),
+                  Icon(Icons.info_outline, size: 18, color: CsColors.gray400),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Captain erstellt gerade die Aufstellung …',
-                      style: TextStyle(color: Colors.orange),
+                      'Noch keine Aufstellung vorhanden.',
+                      style: CsTextStyles.bodySmall.copyWith(
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            CsLightCard(
+              color: CsColors.white,
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: CsColors.gray400),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Noch keine Aufstellung vorhanden.\n'
+                      'Tippe auf „Generieren", um eine zu erstellen.',
+                      style: CsTextStyles.bodySmall.copyWith(
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
+        ] else ...[
+          if (!_isAdmin && isDraft) ...[
+            const SizedBox(height: 8),
+            _premiumBanner(
+              icon: Icons.hourglass_top,
+              text: 'Captain erstellt gerade die Aufstellung …',
+              color: CsColors.warning,
+            ),
           ] else ...[
-            // ── Auto-promotion hint (published) ──
             if (isPublished) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Row(
+              const SizedBox(height: 8),
+              _premiumBanner(
+                icon: Icons.auto_mode,
+                text:
+                    'Ersatzkette aktiv: Bei Absage rückt der nächste Ersatz automatisch nach.',
+                color: CsColors.info,
+              ),
+            ],
+
+            if (_isAdmin && _lineupViolations.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _buildViolationBanner(),
+            ],
+
+            if (_isAdmin && isDraft) ...[
+              const SizedBox(height: 8),
+              _buildReorderableSlots(ordered, starters.length, reserves.length),
+            ] else ...[
+              const SizedBox(height: 8),
+              CsCard(
+                backgroundColor: CsColors.white,
+                borderColor: CsColors.gray200,
+                boxShadow: CsShadows.soft,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.auto_mode,
-                        color: Colors.blue.shade700, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Text(
-                        'Ersatzkette aktiv: Bei Absage rückt '
-                        'der nächste Ersatz automatisch nach.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue.shade700,
+                        'Starter (${starters.length})',
+                        style: CsTextStyles.titleSmall.copyWith(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: CsColors.gray900,
                         ),
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    ...List.generate(starters.length, (i) {
+                      return _buildSlotTile(starters[i], i, ordered.length);
+                    }),
+                    if (reserves.isNotEmpty) ...[
+                      Divider(
+                        color: CsColors.gray200,
+                        height: 16,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          'Ersatz (${reserves.length})',
+                          style: CsTextStyles.titleSmall.copyWith(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: CsColors.gray900,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      ...List.generate(reserves.length, (j) {
+                        final linearIdx = starters.length + j;
+                        return _buildSlotTile(
+                          reserves[j],
+                          linearIdx,
+                          ordered.length,
+                        );
+                      }),
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
             ],
 
-            // ── Rule-violation warning banner (captain only) ──
-            if (_isAdmin && _lineupViolations.isNotEmpty) ...[
-              _buildViolationBanner(),
-              const SizedBox(height: 12),
-            ],
-
-            // ── Slot list (drag & drop for admin draft, static otherwise) ──
             if (_isAdmin && isDraft) ...[
-              _buildReorderableSlots(
-                  ordered, starters.length, reserves.length),
-            ] else ...[
-              Text('Starter (${starters.length})',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              ...List.generate(starters.length, (i) {
-                return _buildSlotTile(starters[i], i, ordered.length);
-              }),
-              if (reserves.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text('Ersatz (${reserves.length})',
-                    style:
-                        const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                ...List.generate(reserves.length, (j) {
-                  final linearIdx = starters.length + j;
-                  return _buildSlotTile(
-                      reserves[j], linearIdx, ordered.length);
-                }),
-              ],
-            ],
-
-            // ── Publish button (only for admin in draft state) ──
-            if (_isAdmin && isDraft) ...[
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed:
-                      _lineupPublishing ? null : _publishLineup,
-                  icon: _lineupPublishing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white))
-                      : const Icon(Icons.send),
-                  label: const Text('Info an Team senden'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 14),
-                    textStyle: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ),
+              const SizedBox(height: 12),
+              CsPrimaryButton(
+                onPressed: _lineupPublishing ? null : _publishLineup,
+                loading: _lineupPublishing,
+                icon: const Icon(Icons.send, size: 18),
+                label: 'Info an Team senden',
               ),
             ],
 
-            // Already published + admin hint
             if (isPublished && _isAdmin) ...[
               const SizedBox(height: 12),
-              const Text(
-                'Aufstellung veröffentlicht. Absagen lösen '
-                'automatisches Nachrücken aus.',
-                style: TextStyle(
-                    color: Colors.green,
-                    fontStyle: FontStyle.italic,
-                    fontSize: 12),
+              _premiumBanner(
+                icon: Icons.check_circle,
+                text:
+                    'Aufstellung veröffentlicht. Absagen lösen automatisches Nachrücken aus.',
+                color: CsColors.success,
               ),
             ],
           ],
@@ -1494,29 +1726,26 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         ? '⚠️ 1 Regelverstoss erkannt'
         : '⚠️ $count Regelverstösse erkannt';
 
-    return Container(
-      width: double.infinity,
+    return CsLightCard(
+      color: CsColors.warning.withValues(alpha: 0.08),
+      border: Border.all(color: CsColors.warning.withValues(alpha: 0.3)),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.amber.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.amber.shade400),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.warning_amber_rounded,
-                  color: Colors.amber.shade800, size: 20),
+              Icon(
+                Icons.warning_amber_rounded,
+                color: CsColors.warning,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: Colors.amber.shade900,
+                  style: CsTextStyles.labelLarge.copyWith(
+                    color: CsColors.warning,
                   ),
                 ),
               ),
@@ -1526,25 +1755,25 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           ...(_lineupViolations.length <= 5
                   ? _lineupViolations
                   : _lineupViolations.take(5))
-              .map((v) => Padding(
-                    padding: const EdgeInsets.only(left: 28, bottom: 2),
-                    child: Text(
-                      '• ${v.message}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.amber.shade900,
-                      ),
+              .map(
+                (v) => Padding(
+                  padding: const EdgeInsets.only(left: 28, bottom: 2),
+                  child: Text(
+                    '• ${v.message}',
+                    style: CsTextStyles.bodySmall.copyWith(
+                      color: CsColors.warning,
                     ),
-                  )),
+                  ),
+                ),
+              ),
           if (_lineupViolations.length > 5)
             Padding(
               padding: const EdgeInsets.only(left: 28, top: 2),
               child: Text(
                 '… und ${_lineupViolations.length - 5} weitere',
-                style: TextStyle(
-                  fontSize: 11,
+                style: CsTextStyles.labelSmall.copyWith(
                   fontStyle: FontStyle.italic,
-                  color: Colors.amber.shade700,
+                  color: CsColors.warning,
                 ),
               ),
             ),
@@ -1553,10 +1782,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             padding: const EdgeInsets.only(left: 28),
             child: Text(
               'Veröffentlichung trotzdem möglich.',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.amber.shade700,
+              style: CsTextStyles.labelSmall.copyWith(
                 fontStyle: FontStyle.italic,
+                color: CsColors.warning,
               ),
             ),
           ),
@@ -1570,7 +1798,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Widget _buildSlotTile(
-      Map<String, dynamic> slot, int linearIndex, int totalCount) {
+    Map<String, dynamic> slot,
+    int linearIndex,
+    int totalCount,
+  ) {
     final pos = slot['position'] as int;
     final slotType = slot['slot_type'] as String;
     final userId = slot['user_id'] as String?;
@@ -1581,12 +1812,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final isPublished = _lineup?['status'] == 'published';
     final isLocked = slot['locked'] == true;
 
-    // Availability of the slot's user
     final avail = userId != null ? _availStatusForUser(userId) : '–';
-
-    // Color based on type
-    final posColor =
-        slotType == 'starter' ? Colors.blue : Colors.orange;
+    final posColor = slotType == 'starter' ? CsColors.info : CsColors.warning;
 
     return ListTile(
       dense: true,
@@ -1613,12 +1840,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          // Availability chip (always shown, visible for published lineups)
-          if (userId != null) ...[
-            const SizedBox(width: 4),
-            _availChip(avail),
-          ],
-          // Lock icon (admin only, published only)
+          if (userId != null) ...[const SizedBox(width: 4), _availChip(avail)],
           if (_isAdmin && isPublished) ...[
             const SizedBox(width: 2),
             InkWell(
@@ -1630,8 +1852,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   isLocked ? Icons.lock : Icons.lock_open,
                   size: 16,
                   color: isLocked
-                      ? Colors.red.shade400
-                      : Colors.grey.shade400,
+                      ? CsColors.error.withValues(alpha: 0.7)
+                      : CsColors.gray400,
                 ),
               ),
             ),
@@ -1641,7 +1863,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       subtitle: isMe
           ? Text(
               slotType == 'starter' ? 'Du · Starter' : 'Du · Ersatz',
-              style: const TextStyle(fontSize: 11, color: Colors.blue),
+              style: CsTextStyles.labelSmall.copyWith(color: CsColors.info),
             )
           : null,
       trailing: (_isAdmin && isDraft)
@@ -1649,22 +1871,30 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: Icon(Icons.arrow_upward,
-                      size: 18,
-                      color: isFirst ? Colors.grey.shade300 : null),
+                  icon: Icon(
+                    Icons.arrow_upward,
+                    size: 18,
+                    color: isFirst ? CsColors.gray200 : null,
+                  ),
                   onPressed: isFirst ? null : () => _moveUp(linearIndex),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
-                      minWidth: 32, minHeight: 32),
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
                 ),
                 IconButton(
-                  icon: Icon(Icons.arrow_downward,
-                      size: 18,
-                      color: isLast ? Colors.grey.shade300 : null),
+                  icon: Icon(
+                    Icons.arrow_downward,
+                    size: 18,
+                    color: isLast ? CsColors.gray200 : null,
+                  ),
                   onPressed: isLast ? null : () => _moveDown(linearIndex),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
-                      minWidth: 32, minHeight: 32),
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
                 ),
               ],
             )
@@ -1672,17 +1902,15 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     );
   }
 
-  // (Old _buildDraggableSlotTile removed – replaced by
-  //  LineupReorderList + _buildReorderSlotContent above.)
-
   // ═══════════════════════════════════════════════════════════
   //  Reorderable slots list (admin + draft) – uses LineupReorderList
   // ═══════════════════════════════════════════════════════════
 
   Widget _buildReorderableSlots(
-      List<Map<String, dynamic>> ordered,
-      int starterCount,
-      int reserveCount) {
+    List<Map<String, dynamic>> ordered,
+    int starterCount,
+    int reserveCount,
+  ) {
     final lineupStatus = _lineup?['status'] as String?;
     final isPublished = lineupStatus == 'published';
 
@@ -1701,38 +1929,31 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           },
         ),
 
-        // ── Hint when captain sees lineup but can't reorder ──
         if (_isAdmin && !_canReorderLineup && _lineupSlots.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(
             isPublished
                 ? 'Aufstellung ist veröffentlicht – Reihenfolge kann nicht '
-                    'mehr geändert werden.'
+                      'mehr geändert werden.'
                 : _lineupGenerating
-                    ? 'Aufstellung wird generiert …'
-                    : _lineupPublishing
-                        ? 'Aufstellung wird veröffentlicht …'
-                        : 'Reihenfolge ändern ist momentan nicht möglich.',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade600,
-              fontStyle: FontStyle.italic,
-            ),
+                ? 'Aufstellung wird generiert …'
+                : _lineupPublishing
+                ? 'Aufstellung wird veröffentlicht …'
+                : 'Reihenfolge ändern ist momentan nicht möglich.',
+            style: CsTextStyles.bodySmall.copyWith(fontStyle: FontStyle.italic),
           ),
         ],
       ],
     );
   }
 
-  /// Builds the content of a single slot tile inside the reorderable list.
-  /// Separated from the drag handle which is managed by [LineupReorderList].
   Widget _buildReorderSlotContent(Map<String, dynamic> slot, int index) {
     final pos = slot['position'] as int;
     final slotType = slot['slot_type'] as String;
     final userId = slot['user_id'] as String?;
     final isMe = userId == _supabase.auth.currentUser?.id;
     final avail = userId != null ? _availStatusForUser(userId) : '–';
-    final posColor = slotType == 'starter' ? Colors.blue : Colors.orange;
+    final posColor = slotType == 'starter' ? CsColors.info : CsColors.warning;
 
     return ListTile(
       dense: true,
@@ -1760,16 +1981,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (userId != null) ...[
-            const SizedBox(width: 4),
-            _availChip(avail),
-          ],
+          if (userId != null) ...[const SizedBox(width: 4), _availChip(avail)],
         ],
       ),
       subtitle: isMe
           ? Text(
               slotType == 'starter' ? 'Du · Starter' : 'Du · Ersatz',
-              style: const TextStyle(fontSize: 11, color: Colors.blue),
+              style: CsTextStyles.labelSmall.copyWith(color: CsColors.info),
             )
           : null,
     );
@@ -1783,230 +2001,242 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final uid = _supabase.auth.currentUser?.id;
     final hasMyOffer =
         uid != null && _carpoolOffers.any((o) => o.driverUserId == uid);
-    debugPrint(
-      'CARPOOL_CTA: uid=$uid hasMyOffer=$hasMyOffer '
-      'offersCount=${_carpoolOffers.length}',
-    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Header row with "Ich fahre" button ──
-        Row(
-          children: [
-            const Icon(Icons.directions_car, size: 20),
-            const SizedBox(width: 8),
-            Text('Fahrgemeinschaften',
-                style: Theme.of(context).textTheme.titleMedium),
-            const Spacer(),
-            if (!hasMyOffer)
-              TextButton.icon(
-                onPressed: () => _showCarpoolOfferDialog(),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Ich fahre'),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        if (_carpoolOffers.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              'Noch keine Fahrgemeinschaften.',
-              style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-            ),
-          )
-        else
-          ..._carpoolOffers.map((offer) {
-            final isDriver = offer.driverUserId == uid;
-            final isPassenger = uid != null && offer.hasPassenger(uid);
-            final canJoin = !isDriver && !isPassenger && !offer.isFull;
-            final canLeave = isPassenger;
-            debugPrint(
-              'CARPOOL_RENDER: offerId=${offer.id} '
-              'uid=$uid driverId=${offer.driverUserId} '
-              'isDriver=$isDriver isPassenger=$isPassenger '
-              'isFull=${offer.isFull} canJoin=$canJoin canLeave=$canLeave '
-              'seats=${offer.seatsTaken}/${offer.seatsTotal} '
-              'passengers=${offer.passengers.map((p) => p.userId).toList()}',
-            );
-
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ── Driver + Seats ──
-                    Row(
-                      children: [
-                        _userAvatar(offer.driverUserId, radius: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${_playerNameForUserId(offer.driverUserId)}${isDriver ? ' (du)' : ''}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              const Text('Fahrer',
-                                  style: TextStyle(
-                                      fontSize: 11, color: Colors.grey)),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: offer.isFull
-                                ? Colors.red.shade50
-                                : Colors.green.shade50,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${offer.seatsTaken}/${offer.seatsTotal} Plätze',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: offer.isFull
-                                  ? Colors.red.shade700
-                                  : Colors.green.shade700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    // ── Start location ──
-                    if (offer.startLocation != null &&
-                        offer.startLocation!.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.location_on,
-                              size: 14, color: Colors.grey),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(offer.startLocation!,
-                                style: const TextStyle(fontSize: 13)),
-                          ),
-                        ],
-                      ),
-                    ],
-
-                    // ── Departure time ──
-                    if (offer.departAt != null) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.access_time,
-                              size: 14, color: Colors.grey),
-                          const SizedBox(width: 4),
-                          Text(
-                            _formatDepartAt(offer.departAt!),
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ],
-
-                    // ── Note ──
-                    if (offer.note != null && offer.note!.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.notes,
-                              size: 14, color: Colors.grey),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(offer.note!,
-                                style: const TextStyle(fontSize: 13)),
-                          ),
-                        ],
-                      ),
-                    ],
-
-                    // ── Passengers list ──
-                    if (offer.passengers.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: offer.passengers.map((p) {
-                          final pName = _playerNameForUserId(p.userId);
-                          final isMe = p.userId == uid;
-                          return Chip(
-                            avatar: _userAvatar(p.userId, radius: 12),
-                            label: Text(
-                              pName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight:
-                                    isMe ? FontWeight.bold : FontWeight.normal,
-                              ),
-                            ),
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                          );
-                        }).toList(),
-                      ),
-                    ],
-
-                    // ── Action buttons ──
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        if (canJoin)
-                          FilledButton.tonalIcon(
-                            onPressed: () => _joinCarpool(offer.id),
-                            icon: const Icon(Icons.person_add, size: 16),
-                            label: const Text('Mitfahren'),
-                          ),
-                        if (canLeave)
-                          OutlinedButton.icon(
-                            onPressed: () => _leaveCarpool(offer.id),
-                            icon: const Icon(Icons.person_remove, size: 16),
-                            label: const Text('Aussteigen'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red.shade700,
-                            ),
-                          ),
-                        if (isDriver) ...[
-                          const SizedBox(width: 8),
-                          IconButton(
-                            onPressed: () =>
-                                _showCarpoolOfferDialog(existingOffer: offer),
-                            icon: const Icon(Icons.edit, size: 18),
-                            tooltip: 'Bearbeiten',
-                            style: IconButton.styleFrom(
-                              foregroundColor: Colors.blue,
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => _deleteCarpool(offer.id),
-                            icon: const Icon(Icons.delete_outline, size: 18),
-                            tooltip: 'Löschen',
-                            style: IconButton.styleFrom(
-                              foregroundColor: Colors.red,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
+        // ── Header card with CTA ──
+        if (!hasMyOffer)
+          CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200,
+            boxShadow: CsShadows.soft,
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Fahrgemeinschaften',
+                  style: CsTextStyles.titleSmall.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: CsColors.gray900,
+                  ),
                 ),
+                const SizedBox(height: 10),
+                CsPrimaryButton(
+                  onPressed: () => _showCarpoolOfferDialog(),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: 'Ich fahre',
+                ),
+              ],
+            ),
+          ),
+
+        if (_carpoolOffers.isEmpty && hasMyOffer)
+          _compactEmptyState('Noch keine Fahrgemeinschaften vorhanden.'),
+
+        if (_carpoolOffers.isEmpty && !hasMyOffer)
+          _compactEmptyState('Noch keine Fahrgemeinschaften. Biete eine Mitfahrgelegenheit an.'),
+
+        // ── Offer accordion cards ──
+        ..._carpoolOffers.map((offer) {
+          final isDriver = offer.driverUserId == uid;
+          final isPassenger = uid != null && offer.hasPassenger(uid);
+          final canJoin = !isDriver && !isPassenger && !offer.isFull;
+          final canLeave = isPassenger;
+          final isExpanded = _expandedCarpoolOffers.contains(offer.id);
+          final progress =
+              offer.seatsTotal > 0 ? offer.seatsTaken / offer.seatsTotal : 0.0;
+
+          return CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200,
+            boxShadow: CsShadows.soft,
+            padding: EdgeInsets.zero,
+            onTap: () {
+              setState(() {
+                if (isExpanded) {
+                  _expandedCarpoolOffers.remove(offer.id);
+                } else {
+                  _expandedCarpoolOffers.add(offer.id);
+                }
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Collapsed row ──
+                  Row(
+                    children: [
+                      _userAvatar(offer.driverUserId, radius: 16),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_playerNameForUserId(offer.driverUserId)}${isDriver ? ' (du)' : ''}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: CsColors.gray900,
+                              ),
+                            ),
+                            if (offer.startLocation != null &&
+                                offer.startLocation!.isNotEmpty ||
+                                offer.departAt != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  [
+                                    if (offer.startLocation != null &&
+                                        offer.startLocation!.isNotEmpty)
+                                      offer.startLocation!,
+                                    if (offer.departAt != null)
+                                      _formatDepartAt(offer.departAt!),
+                                  ].join(' · '),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: CsColors.gray500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      AnimatedRotation(
+                        turns: isExpanded ? 0.5 : 0.0,
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        child: Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 22,
+                          color: CsColors.gray900,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // ── Progress bar (seats) ──
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: SizedBox(
+                      height: 6,
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: CsColors.gray200,
+                        valueColor: AlwaysStoppedAnimation<Color>(CsColors.emerald),
+                      ),
+                    ),
+                  ),
+
+                  // ── Expanded content ──
+                  AnimatedCrossFade(
+                    firstChild: const SizedBox.shrink(),
+                    secondChild: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (offer.note != null && offer.note!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          _iconTextRow(Icons.notes, offer.note!),
+                        ],
+
+                        // ── Passengers ──
+                        if (offer.passengers.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          ...offer.passengers.map((p) {
+                            final pName = _playerNameForUserId(p.userId);
+                            final isMe = p.userId == uid;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: Row(
+                                children: [
+                                  _userAvatar(p.userId, radius: 12),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      pName,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: isMe
+                                            ? FontWeight.w600
+                                            : FontWeight.w400,
+                                        color: CsColors.gray900,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.person,
+                                    size: 14,
+                                    color: CsColors.gray400,
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
+
+                        // ── Action row ──
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            if (canJoin)
+                              FilledButton.tonalIcon(
+                                onPressed: () => _joinCarpool(offer.id),
+                                icon: const Icon(Icons.person_add, size: 16),
+                                label: const Text('Mitfahren'),
+                              ),
+                            if (canLeave)
+                              OutlinedButton.icon(
+                                onPressed: () => _leaveCarpool(offer.id),
+                                icon: const Icon(Icons.person_remove, size: 16),
+                                label: const Text('Aussteigen'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: CsColors.error,
+                                ),
+                              ),
+                            if (isDriver) ...[
+                              const Spacer(),
+                              IconButton(
+                                onPressed: () => _showCarpoolOfferDialog(
+                                    existingOffer: offer),
+                                icon: const Icon(Icons.edit_outlined, size: 20),
+                                tooltip: 'Bearbeiten',
+                                style: IconButton.styleFrom(
+                                  foregroundColor: CsColors.gray900,
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => _deleteCarpool(offer.id),
+                                icon: const Icon(
+                                    Icons.delete_outline, size: 20),
+                                tooltip: 'Löschen',
+                                style: IconButton.styleFrom(
+                                  foregroundColor: CsColors.gray900,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                    crossFadeState: isExpanded
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                    duration: const Duration(milliseconds: 200),
+                    sizeCurve: Curves.easeOut,
+                  ),
+                ],
               ),
-            );
-          }),
+            ),
+          );
+        }),
       ],
     );
   }
@@ -2030,19 +2260,14 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       debugPrint('CARPOOL_JOIN_TAP: RPC success, reloading…');
       await _reloadCarpool(rethrow_: true);
       if (!mounted) return;
-      debugPrint('CARPOOL_JOIN_TAP: reload done, offers=${_carpoolOffers.length}');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Du fährst mit ✅')),
+      debugPrint(
+        'CARPOOL_JOIN_TAP: reload done, offers=${_carpoolOffers.length}',
       );
+      CsToast.success(context, 'Du fährst mit');
     } catch (e) {
       debugPrint('CARPOOL_JOIN_TAP ERROR: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Mitfahren fehlgeschlagen: $e'),
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      CsToast.error(context, 'Mitfahren konnte nicht gespeichert werden.');
     }
   }
 
@@ -2054,41 +2279,41 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       debugPrint('CARPOOL_LEAVE_TAP: RPC success, reloading…');
       await _reloadCarpool(rethrow_: true);
       if (!mounted) return;
-      debugPrint('CARPOOL_LEAVE_TAP: reload done, offers=${_carpoolOffers.length}');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ausgestiegen')),
+      debugPrint(
+        'CARPOOL_LEAVE_TAP: reload done, offers=${_carpoolOffers.length}',
       );
+      CsToast.success(context, 'Ausgestiegen');
     } catch (e) {
       debugPrint('CARPOOL_LEAVE_TAP ERROR: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Aussteigen fehlgeschlagen: $e'),
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      CsToast.error(context, 'Aussteigen konnte nicht gespeichert werden.');
     }
   }
 
   Future<void> _deleteCarpool(String offerId) async {
-    final ok = await showDialog<bool>(
+    final ok = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Fahrgemeinschaft löschen?'),
-        content: const Text('Alle Mitfahrer werden entfernt.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white),
-            child: const Text('Löschen'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (ctx) => CsBottomSheetForm(
+        title: 'Fahrgemeinschaft löschen?',
+        ctaLabel: 'Löschen',
+        onCta: () => Navigator.pop(ctx, true),
+        secondaryLabel: 'Abbrechen',
+        onSecondary: () => Navigator.pop(ctx, false),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.delete_forever, size: 40, color: CsColors.error),
+            const SizedBox(height: 12),
+            Text(
+              'Alle Mitfahrer werden entfernt.',
+              style: CsTextStyles.bodySmall,
+            ),
+          ],
+        ),
       ),
     );
     if (ok != true) return;
@@ -2097,44 +2322,48 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       await _reloadCarpool();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
   Future<void> _showCarpoolOfferDialog({CarpoolOffer? existingOffer}) async {
     int seats = existingOffer?.seatsTotal ?? 4;
-    final locationCtrl =
-        TextEditingController(text: existingOffer?.startLocation ?? '');
-    final noteCtrl =
-        TextEditingController(text: existingOffer?.note ?? '');
+    final locationCtrl = TextEditingController(
+      text: existingOffer?.startLocation ?? '',
+    );
+    final noteCtrl = TextEditingController(text: existingOffer?.note ?? '');
     TimeOfDay? departTime = existingOffer?.departAt != null
         ? TimeOfDay.fromDateTime(existingOffer!.departAt!.toLocal())
         : null;
 
-    final saved = await showDialog<bool>(
+    final saved = await showModalBottomSheet<bool>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
-          title: Text(existingOffer != null
-              ? 'Fahrgemeinschaft bearbeiten'
-              : 'Ich fahre'),
-          content: SingleChildScrollView(
+        builder: (ctx, setD) {
+          return CsBottomSheetForm(
+            title: existingOffer != null
+                ? 'Fahrgemeinschaft bearbeiten'
+                : 'Ich fahre',
+            ctaLabel: 'Speichern',
+            onCta: () => Navigator.pop(ctx, true),
+            secondaryLabel: 'Abbrechen',
+            onSecondary: () => Navigator.pop(ctx, false),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Seats stepper
-                const Text('Anzahl freie Plätze:',
-                    style: TextStyle(fontWeight: FontWeight.w500)),
-                const SizedBox(height: 4),
+                const Text(
+                  'Wie viele Plätze bietest du an?',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     IconButton(
-                      onPressed: seats > 1
-                          ? () => setD(() => seats--)
-                          : null,
+                      onPressed: seats > 1 ? () => setD(() => seats--) : null,
                       icon: const Icon(Icons.remove_circle_outline),
                     ),
                     SizedBox(
@@ -2143,42 +2372,39 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                         '$seats',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.bold),
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                     IconButton(
-                      onPressed: seats < 9
-                          ? () => setD(() => seats++)
-                          : null,
+                      onPressed: seats < 9 ? () => setD(() => seats++) : null,
                       icon: const Icon(Icons.add_circle_outline),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-
-                // Start location
+                const SizedBox(height: 16),
                 TextField(
                   controller: locationCtrl,
                   decoration: const InputDecoration(
                     labelText: 'Abfahrtsort',
                     hintText: 'z.B. Bahnhof Bern',
                     prefixIcon: Icon(Icons.location_on, size: 18),
-                    border: OutlineInputBorder(),
-                    isDense: true,
                   ),
                 ),
-                const SizedBox(height: 12),
-
-                // Departure time
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     const Icon(Icons.access_time, size: 18),
                     const SizedBox(width: 8),
-                    Text(departTime != null
-                        ? 'Abfahrt: ${departTime!.format(ctx)}'
-                        : 'Abfahrtszeit (optional)'),
-                    const Spacer(),
-                    TextButton(
+                    Expanded(
+                      child: Text(
+                        departTime != null
+                            ? 'Abfahrt: ${departTime!.format(ctx)}'
+                            : 'Abfahrtszeit (optional)',
+                      ),
+                    ),
+                    IconButton(
                       onPressed: () async {
                         final t = await showTimePicker(
                           context: ctx,
@@ -2186,8 +2412,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                         );
                         if (t != null) setD(() => departTime = t);
                       },
-                      child: Text(
-                          departTime != null ? 'Ändern' : 'Setzen'),
+                      icon: const Icon(Icons.edit_calendar, size: 18),
+                      tooltip: departTime != null ? 'Ändern' : 'Setzen',
                     ),
                     if (departTime != null)
                       IconButton(
@@ -2197,41 +2423,25 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 12),
-
-                // Note
+                const SizedBox(height: 16),
                 TextField(
                   controller: noteCtrl,
                   decoration: const InputDecoration(
                     labelText: 'Notiz (optional)',
                     hintText: 'z.B. Treffpunkt Parkplatz',
                     prefixIcon: Icon(Icons.notes, size: 18),
-                    border: OutlineInputBorder(),
-                    isDense: true,
                   ),
                   maxLines: 2,
                 ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Abbrechen'),
-            ),
-            FilledButton.icon(
-              onPressed: () => Navigator.pop(ctx, true),
-              icon: const Icon(Icons.check, size: 18),
-              label: const Text('Speichern'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
 
     if (saved != true) return;
 
-    // Build depart_at DateTime from the match date + selected time
     DateTime? departAt;
     if (departTime != null) {
       final matchAt = DateTime.tryParse(_match['match_at'] as String? ?? '');
@@ -2251,18 +2461,17 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         teamId: widget.teamId,
         matchId: widget.matchId,
         seatsTotal: seats,
-        startLocation:
-            locationCtrl.text.trim().isEmpty ? null : locationCtrl.text.trim(),
+        startLocation: locationCtrl.text.trim().isEmpty
+            ? null
+            : locationCtrl.text.trim(),
         note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
         departAt: departAt,
       );
       debugPrint('CARPOOL_UI: upsert returned offerId=$offerId – refetching…');
 
-      // Refetch with rethrow so query errors surface here
       await _reloadCarpool(rethrow_: true);
       if (!mounted) return;
 
-      // Verify the offer is actually visible after refetch
       final visible = _carpoolOffers.any((o) => o.id == offerId);
       debugPrint(
         'CARPOOL_UI: post-refetch offers=${_carpoolOffers.length}, '
@@ -2270,30 +2479,16 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       );
 
       if (visible) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Fahrgemeinschaft gespeichert ✅')),
-        );
+        CsToast.success(context, 'Fahrgemeinschaft gespeichert');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Fahrgemeinschaft erstellt, aber nicht sichtbar.\n'
-              'Mögliche Ursache: fehlende Leseberechtigung (RLS).',
-            ),
-            backgroundColor: Colors.orange.shade700,
-            duration: const Duration(seconds: 6),
-          ),
+        CsToast.info(context,
+          'Fahrgemeinschaft erstellt. Bitte lade die Seite neu.',
         );
       }
     } catch (e) {
       debugPrint('CARPOOL_UI CREATE ERROR: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Fehler: $e'),
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
@@ -2304,166 +2499,340 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   Widget _buildDinnerSection() {
     final uid = _supabase.auth.currentUser?.id;
 
-    // Counts
     final yesCount = _dinnerRsvps.where((r) => r.status == 'yes').length;
     final noCount = _dinnerRsvps.where((r) => r.status == 'no').length;
     final maybeCount = _dinnerRsvps.where((r) => r.status == 'maybe').length;
+    final answered = yesCount + noCount + maybeCount;
+    final totalMembers = _members.length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Header ──
-        Row(
-          children: [
-            const Icon(Icons.restaurant, size: 20),
-            const SizedBox(width: 8),
-            Text('Essen',
-                style: Theme.of(context).textTheme.titleMedium),
-          ],
-        ),
-        const SizedBox(height: 12),
+        // ── Main Essen card ──
+        CsCard(
+          backgroundColor: CsColors.white,
+          borderColor: CsColors.gray200,
+          boxShadow: CsShadows.soft,
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Title row
+              Row(
+                children: [
+                  Icon(Icons.restaurant_outlined, size: 18, color: CsColors.gray900),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Essen',
+                      style: CsTextStyles.titleSmall.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: CsColors.gray900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
 
-        // ── My RSVP Buttons ──
-        Row(
-          children: [
-            _dinnerButton('Ja', 'yes', Icons.check_circle_outline),
-            const SizedBox(width: 8),
-            _dinnerButton('Nein', 'no', Icons.cancel_outlined),
-            const SizedBox(width: 8),
-            _dinnerButton('Vielleicht', 'maybe', Icons.help_outline),
-          ],
-        ),
+              // Counts row
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _neutralCount(Icons.check_circle_outline, yesCount),
+                  const SizedBox(width: 12),
+                  _neutralCount(Icons.cancel_outlined, noCount),
+                  const SizedBox(width: 12),
+                  _neutralCount(Icons.help_outline, maybeCount),
+                  const Spacer(),
+                  Text(
+                    '$answered von $totalMembers',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: CsColors.gray900,
+                    ),
+                  ),
+                ],
+              ),
 
-        // ── Note input (visible after choosing yes/maybe) ──
-        if (_myDinnerStatus == 'yes' || _myDinnerStatus == 'maybe') ...[
-          const SizedBox(height: 8),
-          _buildDinnerNoteField(),
-        ],
-
-        const SizedBox(height: 12),
-
-        // ── Summary counts ──
-        Wrap(
-          spacing: 16,
-          children: [
-            _dinnerCountChip('✅ Ja', yesCount, Colors.green),
-            _dinnerCountChip('❌ Nein', noCount, Colors.red),
-            _dinnerCountChip('❓ Vielleicht', maybeCount, Colors.orange),
-          ],
-        ),
-
-        // ── RSVP list ──
-        if (_dinnerRsvps.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          ...List.generate(_dinnerRsvps.length, (i) {
-            final rsvp = _dinnerRsvps[i];
-            final name = _playerNameForUserId(rsvp.userId);
-            final isMe = rsvp.userId == uid;
-            return ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              contentPadding: EdgeInsets.zero,
-              leading: _userAvatar(rsvp.userId, radius: 16),
-              title: Text(
-                '$name${isMe ? ' (du)' : ''}',
-                style: TextStyle(
-                  fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+              // Progress bar
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: SizedBox(
+                  height: 6,
+                  child: LinearProgressIndicator(
+                    value: totalMembers > 0 ? answered / totalMembers : 0,
+                    backgroundColor: CsColors.gray200,
+                    valueColor: const AlwaysStoppedAnimation<Color>(CsColors.emerald),
+                  ),
                 ),
               ),
-              subtitle: rsvp.note != null && rsvp.note!.isNotEmpty
-                  ? Text(rsvp.note!, style: const TextStyle(fontSize: 12))
-                  : null,
-              trailing: Text(
-                rsvp.statusEmoji,
-                style: const TextStyle(fontSize: 18),
+
+              // Inline RSVP buttons ("Deine Zusage")
+              const SizedBox(height: 14),
+              Text(
+                'Deine Zusage',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: CsColors.gray500,
+                ),
               ),
-            );
-          }),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  _dinnerButton('Ja', 'yes', Icons.check_circle_outline, CsColors.success),
+                  const SizedBox(width: 6),
+                  _dinnerButton('Nein', 'no', Icons.cancel_outlined, CsColors.error),
+                  const SizedBox(width: 6),
+                  _dinnerButton('Unsicher', 'maybe', Icons.help_outline, CsColors.warning),
+                ],
+              ),
+
+              // Note field
+              if (_myDinnerStatus == 'yes' || _myDinnerStatus == 'maybe') ...[
+                const SizedBox(height: 10),
+                _buildDinnerNoteField(),
+              ],
+            ],
+          ),
+        ),
+
+        // ── Teilnehmer accordion ──
+        if (_dinnerRsvps.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200,
+            boxShadow: CsShadows.soft,
+            padding: EdgeInsets.zero,
+            onTap: () => setState(() => _dinnerExpanded = !_dinnerExpanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Collapsed header row
+                  Row(
+                    children: [
+                      Icon(Icons.group_outlined, size: 18, color: CsColors.gray500),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Teilnehmer',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: CsColors.gray900,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${_dinnerRsvps.length}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: CsColors.gray500,
+                        ),
+                      ),
+                      const Spacer(),
+                      AnimatedRotation(
+                        turns: _dinnerExpanded ? 0.5 : 0.0,
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        child: Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 22,
+                          color: CsColors.gray900,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // Expanded list
+                  AnimatedCrossFade(
+                    firstChild: const SizedBox.shrink(),
+                    secondChild: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Column(
+                        children: List.generate(_dinnerRsvps.length, (i) {
+                          final rsvp = _dinnerRsvps[i];
+                          final name = _playerNameForUserId(rsvp.userId);
+                          final isMe = rsvp.userId == uid;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              children: [
+                                _userAvatar(rsvp.userId, radius: 14),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '$name${isMe ? ' (du)' : ''}',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: isMe
+                                              ? FontWeight.w600
+                                              : FontWeight.w400,
+                                          color: CsColors.gray900,
+                                        ),
+                                      ),
+                                      if (rsvp.note != null &&
+                                          rsvp.note!.isNotEmpty)
+                                        Text(
+                                          rsvp.note!,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: CsColors.gray500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                _dinnerStatusIcon(rsvp.status),
+                              ],
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+                    crossFadeState: _dinnerExpanded
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                    duration: const Duration(milliseconds: 200),
+                    sizeCurve: Curves.easeOut,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ],
     );
   }
 
-  Widget _dinnerButton(String label, String status, IconData icon) {
+  Widget _dinnerButton(
+      String label, String status, IconData icon, Color color) {
     final isSelected = _myDinnerStatus == status;
-    final Color color;
-    switch (status) {
-      case 'yes':
-        color = Colors.green;
-        break;
-      case 'no':
-        color = Colors.red;
-        break;
-      default:
-        color = Colors.orange;
-    }
+    final isUpdating = _dinnerUpdating && isSelected;
 
     return Expanded(
-      child: OutlinedButton.icon(
-        onPressed: () => _setDinnerRsvp(status),
-        icon: Icon(icon, size: 18, color: isSelected ? Colors.white : color),
-        label: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? Colors.white : color,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      child: AnimatedScale(
+        scale: isUpdating ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          height: 42,
+          decoration: BoxDecoration(
+            color: CsColors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? color : const Color(0xFFDADDE3),
+              width: isSelected ? 1.8 : 1.0,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.12),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: _dinnerUpdating ? null : () => _setDinnerRsvp(status),
+              child: Opacity(
+                opacity: isUpdating ? 0.5 : 1.0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 18, color: color),
+                    const SizedBox(width: 5),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF111111),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
-        style: OutlinedButton.styleFrom(
-          backgroundColor: isSelected ? color : null,
-          side: BorderSide(color: color),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-        ),
       ),
-    );
-  }
-
-  Widget _dinnerCountChip(String label, int count, Color color) {
-    return Chip(
-      label: Text('$label: $count',
-          style: TextStyle(fontSize: 12, color: color)),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      side: BorderSide(color: color.withValues(alpha: 0.3)),
-      backgroundColor: color.withValues(alpha: 0.08),
     );
   }
 
   Widget _buildDinnerNoteField() {
-    // Find my current note
     final uid = _supabase.auth.currentUser?.id;
-    final myRsvp = _dinnerRsvps
-        .where((r) => r.userId == uid)
-        .firstOrNull;
+    final myRsvp = _dinnerRsvps.where((r) => r.userId == uid).firstOrNull;
     final ctrl = TextEditingController(text: myRsvp?.note ?? '');
 
-    return TextField(
-      controller: ctrl,
-      decoration: const InputDecoration(
-        hintText: 'Notiz (z.B. "komme später")',
-        isDense: true,
-        border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    return SizedBox(
+      height: 44,
+      child: TextField(
+        controller: ctrl,
+        style: const TextStyle(fontSize: 13, color: CsColors.gray900),
+        decoration: InputDecoration(
+          hintText: 'Notiz (z.B. "komme später")',
+          hintStyle: TextStyle(fontSize: 13, color: CsColors.gray400),
+          isDense: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: CsColors.gray200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: CsColors.gray200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: CsColors.gray400),
+          ),
+        ),
+        textInputAction: TextInputAction.done,
+        onSubmitted: (value) {
+          if (_myDinnerStatus != null) {
+            _setDinnerRsvp(_myDinnerStatus!, note: value);
+          }
+        },
       ),
-      textInputAction: TextInputAction.done,
-      onSubmitted: (value) {
-        if (_myDinnerStatus != null) {
-          _setDinnerRsvp(_myDinnerStatus!, note: value);
-        }
-      },
     );
   }
 
   Future<void> _setDinnerRsvp(String status, {String? note}) async {
-    try {
-      // If same status tapped again without note change, just ignore
-      final uid = _supabase.auth.currentUser?.id;
-      final existingRsvp = _dinnerRsvps
-          .where((r) => r.userId == uid)
-          .firstOrNull;
+    if (_dinnerUpdating) return;
+    final oldStatus = _myDinnerStatus;
 
-      // Use existing note if none provided
+    // Haptic feedback.
+    HapticFeedback.selectionClick();
+
+    // Optimistic UI update.
+    setState(() {
+      _myDinnerStatus = status;
+      _dinnerUpdating = true;
+    });
+
+    try {
+      final uid = _supabase.auth.currentUser?.id;
+      final existingRsvp =
+          _dinnerRsvps.where((r) => r.userId == uid).firstOrNull;
       final effectiveNote = note ?? existingRsvp?.note;
 
       await DinnerService.upsertRsvp(
@@ -2473,22 +2842,15 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       );
       await _reloadDinner();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(status == 'yes'
-              ? 'Du isst mit! 🍽️'
-              : status == 'no'
-                  ? 'Kein Essen für dich.'
-                  : 'Vielleicht – wir zählen dich mal mit.'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      setState(() => _dinnerUpdating = false);
     } catch (e) {
       debugPrint('DINNER_UPSERT ERROR: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      setState(() {
+        _myDinnerStatus = oldStatus;
+        _dinnerUpdating = false;
+      });
+      CsToast.error(context, 'Speichern nicht möglich. Bitte versuche es erneut.');
     }
   }
 
@@ -2499,160 +2861,163 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   Widget _buildExpensesSection() {
     final uid = _supabase.auth.currentUser?.id;
 
-    // Summary
-    final totalCents =
-        _expenses.fold<int>(0, (sum, e) => sum + e.amountCents);
+    final totalCents = _expenses.fold<int>(0, (sum, e) => sum + e.amountCents);
     final totalCHF = totalCents / 100.0;
-    final totalOpenCents =
-        _expenses.fold<int>(0, (sum, e) => sum + e.openCents);
+    final totalOpenCents = _expenses.fold<int>(
+      0,
+      (sum, e) => sum + e.openCents,
+    );
     final totalPaidCents = totalCents - totalOpenCents;
-    final memberCount =
-        _expenses.isNotEmpty ? _expenses.first.shareCount : _members.length;
+    final memberCount = _expenses.isNotEmpty
+        ? _expenses.first.shareCount
+        : _members.length;
     final perPersonCHF = memberCount > 0 ? totalCHF / memberCount : 0.0;
 
-    // Dinner-yes count (for the hint in the dialog)
-    final dinnerYesCount =
-        _dinnerRsvps.where((r) => r.status == 'yes').length;
+    final dinnerYesCount = _dinnerRsvps.where((r) => r.status == 'yes').length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Header with add button ──
-        Row(
-          children: [
-            const Icon(Icons.receipt_long, size: 20),
-            const SizedBox(width: 8),
-            Text('Spesen',
-                style: Theme.of(context).textTheme.titleMedium),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: dinnerYesCount > 0
-                  ? () => _showCreateExpenseDialog()
-                  : () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Keine Dinner-Zusagen (Ja) – '
-                            'bitte zuerst unter "Essen" zusagen.',
+        // ── Summary card ──
+        CsCard(
+          backgroundColor: CsColors.white,
+          borderColor: CsColors.gray200,
+          boxShadow: CsShadows.soft,
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Spesen',
+                      style: CsTextStyles.titleSmall.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: CsColors.gray900,
+                      ),
+                    ),
+                  ),
+                  if (_expenses.isNotEmpty)
+                    CsStatusChip(
+                      label: 'CHF ${totalCHF.toStringAsFixed(2)}',
+                      variant: CsChipVariant.amber,
+                    ),
+                ],
+              ),
+              if (_expenses.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Total', style: CsTextStyles.bodySmall.copyWith(color: CsColors.gray500)),
+                        Text(
+                          'CHF ${totalCHF.toStringAsFixed(2)}',
+                          style: CsTextStyles.titleMedium.copyWith(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: CsColors.gray900,
                           ),
                         ),
-                      );
-                    },
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Hinzufügen'),
-            ),
-          ],
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Pro Kopf ($memberCount Pers.)',
+                          style: CsTextStyles.bodySmall.copyWith(color: CsColors.gray500),
+                        ),
+                        Text(
+                          'CHF ${perPersonCHF.toStringAsFixed(2)}',
+                          style: CsTextStyles.titleMedium.copyWith(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: CsColors.gray900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                CsProgressRow(
+                  label: 'Bezahlt',
+                  value:
+                      'CHF ${(totalPaidCents / 100).toStringAsFixed(2)} / ${totalCHF.toStringAsFixed(2)}',
+                  progress: totalCents > 0 ? totalPaidCents / totalCents : 0,
+                  color: CsColors.emerald,
+                  onDark: false,
+                ),
+              ],
+              const SizedBox(height: 10),
+              CsPrimaryButton(
+                onPressed: dinnerYesCount > 0
+                    ? () => _showCreateExpenseDialog()
+                    : () {
+                        CsToast.info(context,
+                          'Zuerst unter „Essen" zusagen, bevor Spesen erfasst werden können.',
+                        );
+                      },
+                icon: const Icon(Icons.add, size: 18),
+                label: 'Ausgabe hinzufügen',
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 8),
 
-        // ── Summary ──
-        if (_expenses.isNotEmpty) ...[
-          Card(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Total',
-                              style:
-                                  TextStyle(fontSize: 12, color: Colors.grey)),
-                          Text(
-                            'CHF ${totalCHF.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text('Pro Kopf ($memberCount Pers.)',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Colors.grey)),
-                          Text(
-                            'CHF ${perPersonCHF.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '✅ Bezahlt: CHF ${(totalPaidCents / 100).toStringAsFixed(2)}',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.green.shade700),
-                      ),
-                      Text(
-                        '⏳ Offen: CHF ${(totalOpenCents / 100).toStringAsFixed(2)}',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: totalOpenCents > 0
-                                ? Colors.orange.shade700
-                                : Colors.green.shade700),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
-
-        // ── Empty state ──
         if (_expenses.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              dinnerYesCount > 0
-                  ? 'Noch keine Spesen erfasst.'
-                  : 'Noch keine Spesen – zuerst unter "Essen" zusagen.',
-              style: const TextStyle(color: Colors.grey),
+          CsLightCard(
+            color: CsColors.white,
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 18, color: CsColors.gray400),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    dinnerYesCount > 0
+                        ? 'Noch keine Spesen erfasst. Lege eine neue Ausgabe an.'
+                        : 'Noch keine Spesen möglich. Zuerst unter „Essen" zusagen.',
+                    style: CsTextStyles.bodySmall.copyWith(
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
 
-        // ── Expense list (expandable with shares) ──
         ...List.generate(_expenses.length, (i) {
           final expense = _expenses[i];
           final paidByName = _playerNameForUserId(expense.paidByUserId);
           final isPaidByMe = expense.paidByUserId == uid;
 
-          return Card(
-            margin: const EdgeInsets.only(bottom: 8),
+          return CsLightCard(
+            color: CsColors.white,
+            padding: EdgeInsets.zero,
             child: ExpansionTile(
               leading: CircleAvatar(
                 backgroundColor: expense.openCount == 0
-                    ? Colors.green.shade100
-                    : Colors.orange.shade100,
+                    ? CsColors.success.withValues(alpha: 0.12)
+                    : CsColors.warning.withValues(alpha: 0.12),
                 child: Icon(
-                  expense.openCount == 0
-                      ? Icons.check_circle
-                      : Icons.payments,
+                  expense.openCount == 0 ? Icons.check_circle : Icons.payments,
                   color: expense.openCount == 0
-                      ? Colors.green
-                      : Colors.orange,
+                      ? CsColors.success
+                      : CsColors.warning,
                 ),
               ),
-              title: Text(expense.title),
+              title: Text(expense.title, style: CsTextStyles.labelLarge),
               subtitle: Text(
                 'Bezahlt von $paidByName${isPaidByMe ? ' (du)' : ''}'
                 ' · ${expense.amountFormatted}'
                 '${expense.note != null && expense.note!.isNotEmpty ? '\n${expense.note}' : ''}',
+                style: CsTextStyles.bodySmall,
               ),
               trailing: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -2660,21 +3025,19 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 children: [
                   Text(
                     '${expense.perPersonFormatted}/Pers.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    style: CsTextStyles.labelSmall,
                   ),
                   Text(
                     '${expense.paidCount}/${expense.shareCount} bezahlt',
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: CsTextStyles.labelSmall.copyWith(
                       color: expense.openCount == 0
-                          ? Colors.green
-                          : Colors.orange,
+                          ? CsColors.success
+                          : CsColors.warning,
                     ),
                   ),
                 ],
               ),
               children: [
-                // ── Share list ──
                 ...expense.shares.map((share) {
                   final shareName = _playerNameForUserId(share.userId);
                   final isMe = share.userId == uid;
@@ -2694,42 +3057,45 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                     ),
                     subtitle: Text(
                       'CHF ${share.shareDouble.toStringAsFixed(2)}'
-                      '${share.isPaid ? ' · ✅ Bezahlt' : ' · ⏳ Offen'}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: share.isPaid ? Colors.green : Colors.orange,
+                      '${share.isPaid ? ' · Bezahlt' : ' · Offen'}',
+                      style: CsTextStyles.bodySmall.copyWith(
+                        color: share.isPaid
+                            ? CsColors.success
+                            : CsColors.warning,
                       ),
                     ),
                     trailing: canToggle
                         ? Switch(
                             value: share.isPaid,
-                            activeTrackColor: Colors.green.shade200,
-                            activeThumbColor: Colors.green,
-                            onChanged: (_) => _toggleSharePaid(
-                              share.id,
-                              !share.isPaid,
-                            ),
+                            onChanged: (_) =>
+                                _toggleSharePaid(share.id, !share.isPaid),
                           )
                         : Icon(
                             share.isPaid
                                 ? Icons.check_circle
                                 : Icons.radio_button_unchecked,
-                            color:
-                                share.isPaid ? Colors.green : Colors.grey,
+                            color: share.isPaid
+                                ? CsColors.success
+                                : CsColors.gray400,
                             size: 20,
                           ),
                   );
                 }),
-                // ── Delete action (for payer) ──
                 if (isPaidByMe)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: TextButton.icon(
-                      onPressed: () => _confirmDeleteExpense(expense),
-                      icon: const Icon(Icons.delete_outline,
-                          size: 16, color: Colors.red),
-                      label: const Text('Spese löschen',
-                          style: TextStyle(color: Colors.red, fontSize: 12)),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8, right: 8),
+                      child: IconButton(
+                        onPressed: () => _confirmDeleteExpense(expense),
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        color: CsColors.error,
+                        tooltip: 'Ausgabe löschen',
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(36, 36),
+                          padding: const EdgeInsets.all(6),
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -2745,18 +3111,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       await ExpenseService.markSharePaid(shareId: shareId, paid: paid);
       await _reloadExpenses();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(paid ? 'Als bezahlt markiert ✅' : 'Als offen markiert'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
+      CsToast.success(context, paid ? 'Als bezahlt markiert' : 'Als offen markiert');
     } catch (e) {
       debugPrint('EXPENSE_TOGGLE_PAID ERROR: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
@@ -2764,67 +3123,62 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final titleCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
     final noteCtrl = TextEditingController();
+    final dinnerYes = _dinnerRsvps.where((r) => r.status == 'yes').length;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Spese hinzufügen'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Titel *',
-                  hintText: 'z.B. Pizza, Getränke',
-                  border: OutlineInputBorder(),
-                ),
-                textCapitalization: TextCapitalization.sentences,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (ctx) => CsBottomSheetForm(
+        title: 'Ausgabe hinzufügen',
+        ctaLabel: 'Speichern',
+        onCta: () => Navigator.pop(ctx, true),
+        secondaryLabel: 'Abbrechen',
+        onSecondary: () => Navigator.pop(ctx, false),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: titleCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Titel *',
+                hintText: 'z.B. Pizza, Getränke',
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: amountCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Betrag (CHF) *',
-                  hintText: 'z.B. 45.50',
-                  border: OutlineInputBorder(),
-                  prefixText: 'CHF ',
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+              textCapitalization: TextCapitalization.sentences,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: amountCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Betrag (CHF) *',
+                hintText: 'z.B. 45.50',
+                prefixText: 'CHF ',
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: noteCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Notiz (optional)',
-                  hintText: 'z.B. Restaurant Adler',
-                  border: OutlineInputBorder(),
-                ),
-                textCapitalization: TextCapitalization.sentences,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Wird gleichmässig auf alle '
-                '${_dinnerRsvps.where((r) => r.status == 'yes').length} '
-                'Dinner-Teilnehmer (Ja) verteilt.',
-                style: TextStyle(
-                    fontSize: 12, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: noteCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Notiz (optional)',
+                hintText: 'z.B. Restaurant Adler',
               ),
-            ],
-          ),
+              textCapitalization: TextCapitalization.sentences,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Wird gleichmässig auf alle $dinnerYes '
+              'Dinner-Teilnehmer (Ja) verteilt.',
+              style: CsTextStyles.bodySmall.copyWith(
+                color: CsColors.gray500,
+              ),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Speichern'),
-          ),
-        ],
       ),
     );
 
@@ -2836,18 +3190,14 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
     if (title.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bitte Titel eingeben.')),
-      );
+      CsToast.info(context, 'Bitte gib einen Titel ein.');
       return;
     }
 
     final amount = double.tryParse(amountText);
     if (amount == null || amount <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bitte gültigen Betrag eingeben.')),
-      );
+      CsToast.info(context, 'Bitte gib einen gültigen Betrag ein.');
       return;
     }
 
@@ -2860,44 +3210,41 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       );
       await _reloadExpenses();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Spese "$title" (CHF ${amount.toStringAsFixed(2)}) erstellt.'),
-          duration: const Duration(seconds: 2),
-        ),
+      CsToast.success(context,
+        'Ausgabe „$title" (CHF ${amount.toStringAsFixed(2)}) erstellt',
       );
     } catch (e) {
       debugPrint('EXPENSE_CREATE ERROR: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Fehler: $e'),
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
   Future<void> _confirmDeleteExpense(Expense expense) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Spese löschen?'),
-        content: Text(
-          '„${expense.title}" (${expense.amountFormatted}) '
-          'und alle Anteile werden gelöscht.',
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (ctx) => CsBottomSheetForm(
+        title: 'Ausgabe löschen?',
+        ctaLabel: 'Löschen',
+        onCta: () => Navigator.pop(ctx, true),
+        secondaryLabel: 'Abbrechen',
+        onSecondary: () => Navigator.pop(ctx, false),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.delete_forever, size: 40, color: CsColors.error),
+            const SizedBox(height: 12),
+            Text(
+              '„${expense.title}" (${expense.amountFormatted}) '
+              'und alle Anteile werden gelöscht.',
+              style: CsTextStyles.bodySmall,
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Löschen'),
-          ),
-        ],
       ),
     );
 
@@ -2907,18 +3254,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       await ExpenseService.deleteExpense(expense.id);
       await _reloadExpenses();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Spese „${expense.title}" gelöscht.'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      CsToast.success(context, 'Ausgabe „${expense.title}" gelöscht');
     } catch (e) {
       debugPrint('EXPENSE_DELETE ERROR: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
     }
   }
 
@@ -2927,43 +3267,93 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Widget _buildSubRequestSection() {
+    final pendingCount = _subRequests.where((r) => r['status'] == 'pending').length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Ersatzanfragen',
-            style: Theme.of(context).textTheme.titleMedium),
+        // ── Header card ──
+        CsCard(
+          backgroundColor: CsColors.white,
+          borderColor: CsColors.gray200,
+          boxShadow: CsShadows.soft,
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Ersatzanfragen',
+                      style: CsTextStyles.titleSmall.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: CsColors.gray900,
+                      ),
+                    ),
+                  ),
+                  if (pendingCount > 0)
+                    CsStatusChip(
+                      label: '$pendingCount ausstehend',
+                      variant: CsChipVariant.amber,
+                    ),
+                ],
+              ),
+              if (_subRequests.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                CsProgressRow(
+                  label: 'Ausstehende Anfragen',
+                  value: '$pendingCount von ${_subRequests.length}',
+                  progress: _subRequests.isNotEmpty
+                      ? pendingCount / _subRequests.length
+                      : 0,
+                  color: CsColors.emerald,
+                  onDark: false,
+                ),
+              ],
+            ],
+          ),
+        ),
         const SizedBox(height: 8),
 
-        // ── Pending requests for ME (I am the substitute) ──
         if (_myPendingSubRequests.isNotEmpty) ...[
-          const Text('Du wurdest angefragt:',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, color: Colors.orange)),
-          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              'Du wurdest angefragt:',
+              style: CsTextStyles.labelLarge.copyWith(color: CsColors.warning),
+            ),
+          ),
           ..._myPendingSubRequests.map((req) {
             final originalId = req['original_user_id'] as String? ?? '';
             final originalName = _playerNameForUserId(originalId);
             final actionable = isRequestActionable(req);
             final expiryLabel = expiresInLabel(req);
 
-            return Card(
+            return CsLightCard(
               color: actionable
-                  ? Colors.orange.shade50
-                  : Colors.grey.shade100,
+                  ? CsColors.warning.withValues(alpha: 0.08)
+                  : CsColors.white,
+              border: Border.all(
+                color: actionable
+                    ? CsColors.warning.withValues(alpha: 0.3)
+                    : CsColors.gray200,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: ListTile(
+                contentPadding: EdgeInsets.zero,
                 leading: Icon(
                   actionable ? Icons.swap_horiz : Icons.timer_off,
-                  color: actionable ? Colors.orange : Colors.grey,
+                  color: actionable ? CsColors.warning : CsColors.gray400,
                 ),
                 title: Text('Ersatz für $originalName'),
                 subtitle: Text(
                   actionable
                       ? 'Kannst du einspringen?'
-                          '${expiryLabel != null ? ' ($expiryLabel)' : ''}'
-                      : 'Anfrage abgelaufen',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: actionable ? null : Colors.grey,
+                            '${expiryLabel != null ? ' ($expiryLabel)' : ''}'
+                      : 'Zeit abgelaufen',
+                  style: CsTextStyles.bodySmall.copyWith(
+                    color: actionable ? null : CsColors.gray400,
                   ),
                 ),
                 trailing: actionable
@@ -2971,42 +3361,54 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.check_circle,
-                                color: Colors.green, size: 32),
+                            icon: Icon(
+                              Icons.check_circle,
+                              color: CsColors.success,
+                              size: 32,
+                            ),
                             tooltip: 'Annehmen',
                             onPressed: () => _respondSubRequest(
-                                req['id'] as String, 'accepted'),
+                              req['id'] as String,
+                              'accepted',
+                            ),
                           ),
                           const SizedBox(width: 4),
                           IconButton(
-                            icon: const Icon(Icons.cancel,
-                                color: Colors.red, size: 32),
+                            icon: Icon(
+                              Icons.cancel,
+                              color: CsColors.error,
+                              size: 32,
+                            ),
                             tooltip: 'Ablehnen',
                             onPressed: () => _respondSubRequest(
-                                req['id'] as String, 'declined'),
+                              req['id'] as String,
+                              'declined',
+                            ),
                           ),
                         ],
                       )
-                    : const Icon(Icons.block, color: Colors.grey, size: 24),
+                    : Icon(Icons.block, color: CsColors.gray400, size: 24),
               ),
             );
           }),
           const SizedBox(height: 12),
         ],
 
-        // ── All requests for this match (history / captain view) ──
         if (_subRequests.isNotEmpty) ...[
-          const Text('Anfragen-Verlauf:',
-              style: TextStyle(fontStyle: FontStyle.italic)),
+          Text(
+            'Anfragen-Verlauf:',
+            style: CsTextStyles.bodySmall.copyWith(fontStyle: FontStyle.italic),
+          ),
           const SizedBox(height: 4),
           ..._subRequests.map((req) {
             final status = req['status'] as String? ?? '?';
-            final originalName =
-                _playerNameForUserId(req['original_user_id'] as String? ?? '');
+            final originalName = _playerNameForUserId(
+              req['original_user_id'] as String? ?? '',
+            );
             final subName = _playerNameForUserId(
-                req['substitute_user_id'] as String? ?? '');
+              req['substitute_user_id'] as String? ?? '',
+            );
 
-            // Client-side: treat timed-out pending as expired visually
             final effectivelyExpired =
                 status == 'pending' && isRequestExpired(req);
             final displayStatus = effectivelyExpired ? 'expired' : status;
@@ -3019,14 +3421,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               _ => Icons.help_outline,
             };
             final color = switch (displayStatus) {
-              'pending' => Colors.orange,
-              'accepted' => Colors.green,
-              'declined' => Colors.red,
-              'expired' => Colors.grey,
-              _ => Colors.grey,
+              'pending' => CsColors.warning,
+              'accepted' => CsColors.success,
+              'declined' => CsColors.error,
+              'expired' => CsColors.gray400,
+              _ => CsColors.gray400,
             };
 
-            // Show remaining time for pending requests
             final expiryHint = (displayStatus == 'pending')
                 ? expiresInLabel(req)
                 : null;
@@ -3036,16 +3437,27 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               leading: Icon(icon, color: color, size: 20),
               title: Text('$subName für $originalName'),
               subtitle: expiryHint != null
-                  ? Text(expiryHint,
-                      style: TextStyle(
-                          fontSize: 11, color: Colors.orange.shade700))
+                  ? Text(
+                      expiryHint,
+                      style: CsTextStyles.labelSmall.copyWith(
+                        color: CsColors.warning,
+                      ),
+                    )
                   : null,
-              trailing: Chip(
-                label: Text(displayStatus,
-                    style: const TextStyle(fontSize: 11)),
-                backgroundColor: color.withValues(alpha: 0.15),
-                padding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
+              trailing: CsStatusChip(
+                label: switch (displayStatus) {
+                  'pending' => 'Wartet auf Antwort',
+                  'accepted' => 'Angenommen',
+                  'declined' => 'Abgelehnt',
+                  'expired' => 'Zeit abgelaufen',
+                  _ => displayStatus,
+                },
+                variant: switch (displayStatus) {
+                  'pending' => CsChipVariant.amber,
+                  'accepted' => CsChipVariant.success,
+                  'declined' => CsChipVariant.error,
+                  _ => CsChipVariant.neutral,
+                },
               ),
             );
           }),
@@ -3054,24 +3466,19 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     );
   }
 
-  /// Resolve a user_id to a display name via claimed player slots,
-  /// profiles (display_name), member nickname, or UUID fallback.
+  /// Resolve a user_id to a display name.
   String _playerNameForUserId(String userId) {
-    // 1. Claimed player slot (first_name + last_name)
     final claimed = _claimedMap[userId];
     if (claimed != null) {
       final name = TeamPlayerService.playerDisplayName(claimed);
       if (name.isNotEmpty && name != '?') return name;
     }
-    // 2. Profile display_name
     final profile = _profiles[userId];
     if (profile != null) {
       final dn = profile['display_name'] as String?;
       if (dn != null && dn.isNotEmpty && dn != 'Spieler') return dn;
     }
-    // 3. Member embedded profile or nickname
-    final member =
-        _members.where((m) => m['user_id'] == userId).firstOrNull;
+    final member = _members.where((m) => m['user_id'] == userId).firstOrNull;
     if (member != null) {
       final nick = member['nickname'] as String?;
       if (nick != null && nick.isNotEmpty) return nick;
@@ -3083,7 +3490,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         if (email != null && email.isNotEmpty) return email.split('@').first;
       }
     }
-    // 4. Fallback
     return 'Unbekannt';
   }
 
@@ -3097,14 +3503,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final isMe = uid == _supabase.auth.currentUser?.id;
     final rank = _rankingStr(uid);
     final nameStr = _memberName(member);
-    final display =
-        rank.isNotEmpty ? '$nameStr · $rank' : nameStr;
+    final display = rank.isNotEmpty ? '$nameStr · $rank' : nameStr;
 
-    // Show "Ersatz anfordern" for admin when player is 'no'
-    // and lineup is published, and no pending request already exists.
     final isPublished = _lineup?['status'] == 'published';
-    final hasPending = _subRequests.any((r) =>
-        r['original_user_id'] == uid && r['status'] == 'pending');
+    final hasPending = _subRequests.any(
+      (r) => r['original_user_id'] == uid && r['status'] == 'pending',
+    );
     final showSubButton =
         _isAdmin && status == 'no' && isPublished && !hasPending;
 
@@ -3115,14 +3519,18 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         '$display${_roleTag(member)}',
         style: TextStyle(
           fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+          color: CsColors.gray900,
+          fontSize: 13,
         ),
       ),
-      subtitle: Text(_statusLabel(status)),
+      subtitle: Text(
+        _statusLabel(status),
+        style: CsTextStyles.bodySmall.copyWith(fontSize: 12, color: CsColors.gray500),
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (isMe)
-            const Icon(Icons.person, size: 16, color: Colors.blue),
+          if (isMe) Icon(Icons.person, size: 16, color: CsColors.info),
           if (showSubButton) ...[
             const SizedBox(width: 4),
             TextButton.icon(
@@ -3132,7 +3540,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: const Size(0, 32),
-                foregroundColor: Colors.orange.shade700,
+                foregroundColor: CsColors.warning,
               ),
             ),
           ],
@@ -3147,115 +3555,200 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
   Widget _lineupStatusBadge(String status) {
     final isDraft = status == 'draft';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: isDraft
-            ? Colors.orange.shade100
-            : Colors.green.shade100,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        isDraft ? 'Entwurf' : 'Veröffentlicht',
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color:
-              isDraft ? Colors.orange.shade800 : Colors.green.shade800,
-        ),
-      ),
+    return CsStatusChip(
+      label: isDraft ? 'Entwurf' : 'Veröffentlicht',
+      variant: isDraft ? CsChipVariant.amber : CsChipVariant.success,
     );
   }
 
-  /// Compact chip showing availability status for a lineup slot player.
   Widget _availChip(String status) {
-    String label;
-    Color bg;
-    Color fg;
+    final IconData icon;
     switch (status) {
       case 'yes':
-        label = '✅';
-        bg = Colors.green.shade50;
-        fg = Colors.green;
+        icon = Icons.check_circle_outline;
       case 'no':
-        label = '❌';
-        bg = Colors.red.shade50;
-        fg = Colors.red;
+        icon = Icons.cancel_outlined;
       case 'maybe':
-        label = '❓';
-        bg = Colors.orange.shade50;
-        fg = Colors.orange;
+        icon = Icons.help_outline;
       default:
-        label = '–';
-        bg = Colors.grey.shade100;
-        fg = Colors.grey;
+        icon = Icons.remove_circle_outline;
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 12, color: fg),
-      ),
-    );
+    return Icon(icon, size: 16, color: Colors.black54);
   }
 
-  Widget _availButton(String status, String label, Color color) {
+  Widget _availButton(String status, String label, Color color, IconData icon) {
     final isSelected = _myStatus == status;
+    final isUpdating = _availUpdating && isSelected;
     return Expanded(
-      child: ElevatedButton(
-        onPressed: () => _setAvailability(status),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: isSelected ? color : null,
-          foregroundColor: isSelected ? Colors.white : color,
-          side: BorderSide(color: color),
-          padding: const EdgeInsets.symmetric(vertical: 12),
+      child: AnimatedScale(
+        scale: isUpdating ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          height: 44,
+          decoration: BoxDecoration(
+            color: CsColors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isSelected ? color : const Color(0xFFDADDE3),
+              width: isSelected ? 1.8 : 1.0,
+            ),
+            boxShadow: isSelected
+                ? [BoxShadow(color: color.withValues(alpha: 0.12), blurRadius: 6, offset: const Offset(0, 2))]
+                : [],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: _availUpdating ? null : () => _setAvailability(status),
+              child: Opacity(
+                opacity: isUpdating ? 0.5 : 1.0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 18, color: color),
+                    const SizedBox(width: 5),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF111111),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
-        child: Text(label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12)),
       ),
-    );
-  }
-
-  Widget _countChip(String label, Color bg, Color fg) {
-    return Chip(
-      label: Text(label,
-          style: TextStyle(color: fg, fontWeight: FontWeight.bold)),
-      backgroundColor: bg,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
     );
   }
 
   Icon _statusIcon(String status) {
     switch (status) {
       case 'yes':
-        return const Icon(Icons.check_circle,
-            color: Colors.green, size: 20);
+        return Icon(Icons.check_circle, color: CsColors.success, size: 20);
       case 'no':
-        return const Icon(Icons.cancel, color: Colors.red, size: 20);
+        return Icon(Icons.cancel, color: CsColors.error, size: 20);
       case 'maybe':
-        return const Icon(Icons.help, color: Colors.orange, size: 20);
+        return Icon(Icons.help, color: CsColors.warning, size: 20);
       default:
-        return const Icon(Icons.radio_button_unchecked,
-            color: Colors.grey, size: 20);
+        return Icon(
+          Icons.radio_button_unchecked,
+          color: CsColors.gray400,
+          size: 20,
+        );
     }
   }
 
   String _statusLabel(String status) {
     switch (status) {
       case 'yes':
-        return 'Verfügbar';
+        return 'Zugesagt';
       case 'no':
-        return 'Nicht verfügbar';
+        return 'Abgesagt';
       case 'maybe':
-        return 'Vielleicht';
+        return 'Unsicher';
       default:
         return 'Keine Antwort';
     }
+  }
+
+  /// Reusable premium info banner.
+  Widget _premiumBanner({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
+    return CsLightCard(
+      color: color.withValues(alpha: 0.08),
+      border: Border.all(color: color.withValues(alpha: 0.25)),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: CsTextStyles.bodySmall.copyWith(color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Small icon + text row for card info.
+  Widget _cardInfoRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: CsColors.gray400),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: CsTextStyles.bodySmall.copyWith(
+                color: CsColors.gray600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Neutral icon + count row (for availability summaries etc.).
+  Widget _neutralCount(IconData icon, int count) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: Colors.black54),
+        const SizedBox(width: 3),
+        Text(
+          '$count',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Dinner status icon (replaces emoji).
+  Widget _dinnerStatusIcon(String status) {
+    final IconData icon;
+    switch (status) {
+      case 'yes':
+        icon = Icons.check_circle_outline;
+      case 'no':
+        icon = Icons.cancel_outlined;
+      default:
+        icon = Icons.help_outline;
+    }
+    return Icon(icon, size: 18, color: Colors.black54);
+  }
+
+  /// Small icon + text row for light cards.
+  Widget _iconTextRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: CsColors.gray400),
+        const SizedBox(width: 4),
+        Expanded(child: Text(text, style: CsTextStyles.bodySmall)),
+      ],
+    );
   }
 }

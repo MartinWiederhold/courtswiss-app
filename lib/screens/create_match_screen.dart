@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/match_service.dart';
+import '../theme/cs_theme.dart';
+import '../widgets/ui/ui.dart';
 
 /// Screen for creating OR editing a match.
 /// Pass [existingMatch] to enter edit mode.
@@ -76,9 +78,7 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_matchDate == null || _matchTime == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bitte Datum und Uhrzeit wählen')),
-      );
+      CsToast.info(context, 'Bitte Datum und Uhrzeit wählen');
       return;
     }
 
@@ -94,20 +94,15 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
 
     try {
       if (widget.isEditing) {
-        await MatchService.updateMatch(
-          widget.existingMatch!['id'] as String,
-          {
-            'opponent': _opponentCtrl.text.trim(),
-            'match_at': matchAt.toUtc().toIso8601String(),
-            'is_home': _isHome,
-            'location': _locationCtrl.text.trim().isEmpty
-                ? null
-                : _locationCtrl.text.trim(),
-            'note': _noteCtrl.text.trim().isEmpty
-                ? null
-                : _noteCtrl.text.trim(),
-          },
-        );
+        await MatchService.updateMatch(widget.existingMatch!['id'] as String, {
+          'opponent': _opponentCtrl.text.trim(),
+          'match_at': matchAt.toUtc().toIso8601String(),
+          'is_home': _isHome,
+          'location': _locationCtrl.text.trim().isEmpty
+              ? null
+              : _locationCtrl.text.trim(),
+          'note': _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        });
       } else {
         await MatchService.createMatch(
           teamId: widget.teamId,
@@ -117,24 +112,15 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
           location: _locationCtrl.text.trim().isEmpty
               ? null
               : _locationCtrl.text.trim(),
-          note: _noteCtrl.text.trim().isEmpty
-              ? null
-              : _noteCtrl.text.trim(),
+          note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
         );
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              widget.isEditing ? 'Spiel aktualisiert ✅' : 'Spiel erstellt ✅'),
-        ),
-      );
+      CsToast.success(context, widget.isEditing ? 'Spiel aktualisiert' : 'Spiel erstellt');
       Navigator.pop(context, true); // true = changed
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler: $e')),
-      );
+      CsToast.error(context, 'Spiel konnte nicht erstellt werden. Bitte versuche es erneut.');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -144,90 +130,211 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
   Widget build(BuildContext context) {
     final dateText = _matchDate != null
         ? '${_matchDate!.day.toString().padLeft(2, '0')}.'
-          '${_matchDate!.month.toString().padLeft(2, '0')}.'
-          '${_matchDate!.year}'
+              '${_matchDate!.month.toString().padLeft(2, '0')}.'
+              '${_matchDate!.year}'
         : 'Datum wählen';
     final timeText = _matchTime != null
         ? '${_matchTime!.hour.toString().padLeft(2, '0')}:'
-          '${_matchTime!.minute.toString().padLeft(2, '0')}'
+              '${_matchTime!.minute.toString().padLeft(2, '0')}'
         : 'Uhrzeit wählen';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-            widget.isEditing ? 'Spiel bearbeiten' : 'Spiel hinzufügen'),
+    return CsScaffoldList(
+      appBar: CsGlassAppBar(
+        title: widget.isEditing ? 'Spiel bearbeiten' : 'Spiel hinzufügen',
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextFormField(
-                controller: _opponentCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Gegner *',
-                  hintText: 'z.B. TC Zürich',
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Pflichtfeld' : null,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _pickDate,
-                      icon: const Icon(Icons.calendar_today, size: 18),
-                      label: Text(dateText),
-                    ),
+              CsAnimatedEntrance(
+                child: CsCard(
+                  backgroundColor: CsColors.white,
+                  borderColor: CsColors.gray200.withValues(alpha: 0.45),
+                  boxShadow: CsShadows.soft,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.sports_tennis,
+                            color: CsColors.gray900,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Spieldetails',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: CsColors.gray900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _opponentCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Gegner *',
+                          hintText: 'z.B. TC Zürich',
+                        ),
+                        style: const TextStyle(color: CsColors.gray900),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Bitte ausfüllen'
+                            : null,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _pickTime,
-                      icon: const Icon(Icons.access_time, size: 18),
-                      label: Text(timeText),
-                    ),
+                ),
+              ),
+
+              CsAnimatedEntrance(
+                delay: const Duration(milliseconds: 60),
+                child: CsCard(
+                  backgroundColor: CsColors.white,
+                  borderColor: CsColors.gray200.withValues(alpha: 0.45),
+                  boxShadow: CsShadows.soft,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Datum & Zeit',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: CsColors.gray900,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _pickDate,
+                              icon: const Icon(
+                                Icons.calendar_today,
+                                size: 18,
+                              ),
+                              label: Text(dateText),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: CsColors.gray900,
+                                side: const BorderSide(
+                                  color: CsColors.gray300,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _pickTime,
+                              icon: const Icon(
+                                Icons.access_time,
+                                size: 18,
+                              ),
+                              label: Text(timeText),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: CsColors.gray900,
+                                side: const BorderSide(
+                                  color: CsColors.gray300,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _isHome ? 'Heimspiel' : 'Auswärtsspiel',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: CsColors.gray900,
+                              ),
+                            ),
+                          ),
+                          Switch(
+                            value: _isHome,
+                            onChanged: (v) => setState(() => _isHome = v),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                title: Text(_isHome ? 'Heim' : 'Auswärts'),
-                subtitle: const Text('Heim / Auswärts'),
-                secondary:
-                    Icon(_isHome ? Icons.home : Icons.directions_car),
-                value: _isHome,
-                onChanged: (v) => setState(() => _isHome = v),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _locationCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Ort',
-                  hintText: 'z.B. Tennisclub Bern, Platz 3',
                 ),
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _noteCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Notiz (optional)',
-                  hintText: 'z.B. Treffpunkt 09:30',
+
+              CsAnimatedEntrance(
+                delay: const Duration(milliseconds: 120),
+                child: CsCard(
+                  backgroundColor: CsColors.white,
+                  borderColor: CsColors.gray200.withValues(alpha: 0.45),
+                  boxShadow: CsShadows.soft,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Details',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: CsColors.gray900,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _locationCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Ort',
+                          hintText: 'z.B. Tennisclub Bern, Platz 3',
+                        ),
+                        style: const TextStyle(color: CsColors.gray900),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _noteCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Notiz (optional)',
+                          hintText: 'z.B. Treffpunkt 09:30',
+                        ),
+                        style: const TextStyle(color: CsColors.gray900),
+                        maxLines: 2,
+                      ),
+                    ],
+                  ),
                 ),
-                maxLines: 2,
               ),
-              const SizedBox(height: 24),
-              if (_saving) const LinearProgressIndicator(),
+
               const SizedBox(height: 8),
-              ElevatedButton.icon(
-                onPressed: _saving ? null : _save,
-                icon: Icon(widget.isEditing ? Icons.check : Icons.save),
-                label: Text(widget.isEditing
-                    ? 'Änderungen speichern'
-                    : 'Spiel erstellen'),
+              if (_saving)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: LinearProgressIndicator(),
+                ),
+
+              CsAnimatedEntrance(
+                delay: const Duration(milliseconds: 180),
+                child: CsPrimaryButton(
+                  onPressed: _saving ? null : _save,
+                  loading: _saving,
+                  icon: Icon(
+                    widget.isEditing ? Icons.check : Icons.save,
+                    size: 18,
+                  ),
+                  label: widget.isEditing
+                      ? 'Änderungen speichern'
+                      : 'Spiel erstellen',
+                ),
               ),
             ],
           ),

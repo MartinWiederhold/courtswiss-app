@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../utils/lineup_reorder.dart';
+import 'ui/cs_toast.dart';
 
 /// Callback signature for persisting a reorder operation.
 ///
@@ -9,10 +10,11 @@ import '../utils/lineup_reorder.dart';
 ///
 /// **Error contract**: completes normally on success; THROWS on failure.
 /// The widget catches the exception and rolls back the optimistic UI.
-typedef PersistReorderCallback = Future<void> Function(
-  List<Map<String, dynamic>> reorderedSlots,
-  MoveStep moveStep,
-);
+typedef PersistReorderCallback =
+    Future<void> Function(
+      List<Map<String, dynamic>> reorderedSlots,
+      MoveStep moveStep,
+    );
 
 /// Stable, self-contained Drag & Drop lineup list.
 ///
@@ -54,7 +56,8 @@ class LineupReorderList extends StatefulWidget {
     BuildContext context,
     Map<String, dynamic> slot,
     int index,
-  ) itemBuilder;
+  )
+  itemBuilder;
 
   /// Optional label shown above the list.
   final String? headerHint;
@@ -100,7 +103,8 @@ class _LineupReorderListState extends State<LineupReorderList> {
   /// Deep-copy the list AND each map inside so rollback snapshots are
   /// completely independent from the original data.
   static List<Map<String, dynamic>> _deepCopyItems(
-      List<Map<String, dynamic>> items) {
+    List<Map<String, dynamic>> items,
+  ) {
     return items.map((m) => Map<String, dynamic>.from(m)).toList();
   }
 
@@ -152,9 +156,7 @@ class _LineupReorderListState extends State<LineupReorderList> {
 
       // Rollback optimistic update to the guaranteed deep-copy snapshot.
       setState(() => _currentItems = before);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fehler beim Speichern: $e')),
-      );
+      CsToast.error(context, 'Änderung konnte nicht gespeichert werden.');
     } finally {
       if (mounted) {
         _persisting = false;
@@ -164,8 +166,9 @@ class _LineupReorderListState extends State<LineupReorderList> {
 
   @override
   Widget build(BuildContext context) {
-    final starters =
-        _currentItems.where((s) => s['slot_type'] == 'starter').length;
+    final starters = _currentItems
+        .where((s) => s['slot_type'] == 'starter')
+        .length;
     final reserves = _currentItems.length - starters;
 
     return Column(
@@ -175,14 +178,19 @@ class _LineupReorderListState extends State<LineupReorderList> {
         // Section header
         Row(
           children: [
-            Text('Starter ($starters)',
-                style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              'Starter ($starters)',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             if (reserves > 0) ...[
               const SizedBox(width: 12),
-              Text('· Ersatz ($reserves)',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade700)),
+              Text(
+                '· Ersatz ($reserves)',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange.shade700,
+                ),
+              ),
             ],
           ],
         ),
@@ -211,9 +219,10 @@ class _LineupReorderListState extends State<LineupReorderList> {
             return AnimatedBuilder(
               animation: animation,
               builder: (context, child) {
-                final elevation = Tween<double>(begin: 0, end: 6)
-                    .animate(animation)
-                    .value;
+                final elevation = Tween<double>(
+                  begin: 0,
+                  end: 6,
+                ).animate(animation).value;
                 return Material(
                   elevation: elevation,
                   color: Colors.white,
@@ -240,7 +249,9 @@ class _LineupReorderListState extends State<LineupReorderList> {
                       index: index,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 8),
+                          horizontal: 4,
+                          vertical: 8,
+                        ),
                         child: Icon(
                           Icons.drag_handle,
                           color: _persisting
@@ -253,9 +264,7 @@ class _LineupReorderListState extends State<LineupReorderList> {
                     const SizedBox(width: 12),
 
                   // Slot content from consumer's builder
-                  Expanded(
-                    child: widget.itemBuilder(context, slot, index),
-                  ),
+                  Expanded(child: widget.itemBuilder(context, slot, index)),
                 ],
               ),
             );

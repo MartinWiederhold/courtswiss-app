@@ -10,25 +10,30 @@ Map<String, dynamic> _slot(
   int pos, {
   String? userId,
   int? ranking,
-}) =>
-    {
-      'id': id,
-      'slot_type': type,
-      'position': pos,
-      'user_id': userId,
-      if (ranking != null)
-        'cs_team_players': {'first_name': 'P', 'last_name': id, 'ranking': ranking},
-    };
+}) => {
+  'id': id,
+  'slot_type': type,
+  'position': pos,
+  'user_id': userId,
+  if (ranking != null)
+    'cs_team_players': {'first_name': 'P', 'last_name': id, 'ranking': ranking},
+};
 
 /// Shorthand: starter slot with user + ranking.
-Map<String, dynamic> _starter(String id, int pos,
-        {String? userId, int? ranking}) =>
-    _slot(id, 'starter', pos, userId: userId, ranking: ranking);
+Map<String, dynamic> _starter(
+  String id,
+  int pos, {
+  String? userId,
+  int? ranking,
+}) => _slot(id, 'starter', pos, userId: userId, ranking: ranking);
 
 /// Shorthand: reserve slot with user + ranking.
-Map<String, dynamic> _reserve(String id, int pos,
-        {String? userId, int? ranking}) =>
-    _slot(id, 'reserve', pos, userId: userId, ranking: ranking);
+Map<String, dynamic> _reserve(
+  String id,
+  int pos, {
+  String? userId,
+  int? ranking,
+}) => _slot(id, 'reserve', pos, userId: userId, ranking: ranking);
 
 /// Extract violation codes from result.
 List<LineupViolationCode> _codes(List<LineupViolation> vs) =>
@@ -56,9 +61,7 @@ void main() {
     });
 
     test('single starter with user → no violations', () {
-      final slots = [
-        _starter('s1', 1, userId: 'u1', ranking: 3),
-      ];
+      final slots = [_starter('s1', 1, userId: 'u1', ranking: 3)];
       expect(detectLineupViolations(slots), isEmpty);
     });
   });
@@ -79,7 +82,8 @@ void main() {
       expect(_codes(vs), contains(LineupViolationCode.missingStarter));
 
       final missing = vs.firstWhere(
-          (v) => v.code == LineupViolationCode.missingStarter);
+        (v) => v.code == LineupViolationCode.missingStarter,
+      );
       expect(missing.slotId, 's2');
       expect(missing.message, contains('Position 2'));
     });
@@ -91,9 +95,9 @@ void main() {
         _reserve('r1', 1, userId: 'u1'),
       ];
 
-      final vs = detectLineupViolations(slots)
-          .where((v) => v.code == LineupViolationCode.missingStarter)
-          .toList();
+      final vs = detectLineupViolations(
+        slots,
+      ).where((v) => v.code == LineupViolationCode.missingStarter).toList();
       expect(vs.length, 2);
     });
 
@@ -127,7 +131,8 @@ void main() {
       expect(_codes(vs), contains(LineupViolationCode.duplicatePlayer));
 
       final dup = vs.firstWhere(
-          (v) => v.code == LineupViolationCode.duplicatePlayer);
+        (v) => v.code == LineupViolationCode.duplicatePlayer,
+      );
       expect(dup.userId, 'u1');
       expect(dup.slotId, 's2'); // second occurrence flagged
     });
@@ -139,9 +144,9 @@ void main() {
         _starter('s3', 3, userId: 'u1', ranking: 5),
       ];
 
-      final dups = detectLineupViolations(slots)
-          .where((v) => v.code == LineupViolationCode.duplicatePlayer)
-          .toList();
+      final dups = detectLineupViolations(
+        slots,
+      ).where((v) => v.code == LineupViolationCode.duplicatePlayer).toList();
       expect(dups.length, 2);
     });
 
@@ -151,9 +156,9 @@ void main() {
         _starter('s2', 2, userId: null),
       ];
 
-      final dups = detectLineupViolations(slots)
-          .where((v) => v.code == LineupViolationCode.duplicatePlayer)
-          .toList();
+      final dups = detectLineupViolations(
+        slots,
+      ).where((v) => v.code == LineupViolationCode.duplicatePlayer).toList();
       expect(dups, isEmpty);
     });
   });
@@ -163,23 +168,31 @@ void main() {
   // ═════════════════════════════════════════════════════════════
 
   group('rankingOrder', () {
-    test('ranking violation: position 2 has better ranking than position 1',
-        () {
-      final slots = [
-        _starter('s1', 1, userId: 'u1', ranking: 5), // R5
-        _starter('s2', 2, userId: 'u2', ranking: 2), // R2 (better!) → violation
-        _reserve('r1', 1, userId: 'u3', ranking: 8),
-      ];
+    test(
+      'ranking violation: position 2 has better ranking than position 1',
+      () {
+        final slots = [
+          _starter('s1', 1, userId: 'u1', ranking: 5), // R5
+          _starter(
+            's2',
+            2,
+            userId: 'u2',
+            ranking: 2,
+          ), // R2 (better!) → violation
+          _reserve('r1', 1, userId: 'u3', ranking: 8),
+        ];
 
-      final vs = detectLineupViolations(slots);
-      expect(_codes(vs), contains(LineupViolationCode.rankingOrder));
+        final vs = detectLineupViolations(slots);
+        expect(_codes(vs), contains(LineupViolationCode.rankingOrder));
 
-      final rank = vs.firstWhere(
-          (v) => v.code == LineupViolationCode.rankingOrder);
-      expect(rank.message, contains('Position 2'));
-      expect(rank.message, contains('R2'));
-      expect(rank.message, contains('R5'));
-    });
+        final rank = vs.firstWhere(
+          (v) => v.code == LineupViolationCode.rankingOrder,
+        );
+        expect(rank.message, contains('Position 2'));
+        expect(rank.message, contains('R2'));
+        expect(rank.message, contains('R5'));
+      },
+    );
 
     test('multiple ranking violations detected', () {
       final slots = [
@@ -188,9 +201,9 @@ void main() {
         _starter('s3', 3, userId: 'u3', ranking: 1), // violation
       ];
 
-      final ranks = detectLineupViolations(slots)
-          .where((v) => v.code == LineupViolationCode.rankingOrder)
-          .toList();
+      final ranks = detectLineupViolations(
+        slots,
+      ).where((v) => v.code == LineupViolationCode.rankingOrder).toList();
       expect(ranks.length, 2);
     });
 
@@ -201,25 +214,31 @@ void main() {
         _starter('s3', 3, userId: 'u3', ranking: 5),
       ];
 
-      final ranks = detectLineupViolations(slots)
-          .where((v) => v.code == LineupViolationCode.rankingOrder)
-          .toList();
+      final ranks = detectLineupViolations(
+        slots,
+      ).where((v) => v.code == LineupViolationCode.rankingOrder).toList();
       expect(ranks, isEmpty);
     });
 
-    test('missing ranking data on any starter → skip ranking check entirely',
-        () {
-      final slots = [
-        _starter('s1', 1, userId: 'u1', ranking: 5),
-        _starter('s2', 2, userId: 'u2'), // no ranking
-        _starter('s3', 3, userId: 'u3', ranking: 1), // would be violation
-      ];
+    test(
+      'missing ranking data on any starter → skip ranking check entirely',
+      () {
+        final slots = [
+          _starter('s1', 1, userId: 'u1', ranking: 5),
+          _starter('s2', 2, userId: 'u2'), // no ranking
+          _starter('s3', 3, userId: 'u3', ranking: 1), // would be violation
+        ];
 
-      final ranks = detectLineupViolations(slots)
-          .where((v) => v.code == LineupViolationCode.rankingOrder)
-          .toList();
-      expect(ranks, isEmpty, reason: 'Should skip when ranking data incomplete');
-    });
+        final ranks = detectLineupViolations(
+          slots,
+        ).where((v) => v.code == LineupViolationCode.rankingOrder).toList();
+        expect(
+          ranks,
+          isEmpty,
+          reason: 'Should skip when ranking data incomplete',
+        );
+      },
+    );
 
     test('no ranking data at all → skip ranking check', () {
       final slots = [
@@ -227,9 +246,9 @@ void main() {
         _starter('s2', 2, userId: 'u2'),
       ];
 
-      final ranks = detectLineupViolations(slots)
-          .where((v) => v.code == LineupViolationCode.rankingOrder)
-          .toList();
+      final ranks = detectLineupViolations(
+        slots,
+      ).where((v) => v.code == LineupViolationCode.rankingOrder).toList();
       expect(ranks, isEmpty);
     });
 
@@ -241,9 +260,9 @@ void main() {
         _reserve('r1', 1, userId: 'u3', ranking: 1), // better than starters
       ];
 
-      final ranks = detectLineupViolations(slots)
-          .where((v) => v.code == LineupViolationCode.rankingOrder)
-          .toList();
+      final ranks = detectLineupViolations(
+        slots,
+      ).where((v) => v.code == LineupViolationCode.rankingOrder).toList();
       expect(ranks, isEmpty);
     });
 
@@ -255,9 +274,9 @@ void main() {
       ];
 
       // After sorting by position: pos1=R5, pos2=R1 → R1 < R5 → violation
-      final ranks = detectLineupViolations(slots)
-          .where((v) => v.code == LineupViolationCode.rankingOrder)
-          .toList();
+      final ranks = detectLineupViolations(
+        slots,
+      ).where((v) => v.code == LineupViolationCode.rankingOrder).toList();
       expect(ranks.length, 1);
     });
   });

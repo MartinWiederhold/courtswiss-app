@@ -23,12 +23,15 @@ class LineupService {
     int reserves = 3,
     bool includeMaybe = false,
   }) async {
-    final result = await _supabase.rpc('generate_lineup', params: {
-      'p_match_id': matchId,
-      'p_starters': starters,
-      'p_reserves': reserves,
-      'p_include_maybe': includeMaybe,
-    });
+    final result = await _supabase.rpc(
+      'generate_lineup',
+      params: {
+        'p_match_id': matchId,
+        'p_starters': starters,
+        'p_reserves': reserves,
+        'p_include_maybe': includeMaybe,
+      },
+    );
     return Map<String, dynamic>.from(result as Map);
   }
 
@@ -52,8 +55,9 @@ class LineupService {
       final rows = await _supabase
           .from('cs_match_lineup_slots')
           .select(
-              'id, match_id, slot_type, position, player_slot_id, user_id, locked, '
-              'cs_team_players(first_name, last_name, ranking)')
+            'id, match_id, slot_type, position, player_slot_id, user_id, locked, '
+            'cs_team_players(first_name, last_name, ranking)',
+          )
           .eq('match_id', matchId)
           .order('position', ascending: true);
       return List<Map<String, dynamic>>.from(rows);
@@ -94,13 +98,16 @@ class LineupService {
     required String toType,
     required int toPos,
   }) async {
-    final result = await _supabase.rpc('move_lineup_slot', params: {
-      'p_match_id': matchId,
-      'p_from_type': fromType,
-      'p_from_pos': fromPos,
-      'p_to_type': toType,
-      'p_to_pos': toPos,
-    });
+    final result = await _supabase.rpc(
+      'move_lineup_slot',
+      params: {
+        'p_match_id': matchId,
+        'p_from_type': fromType,
+        'p_from_pos': fromPos,
+        'p_to_type': toType,
+        'p_to_pos': toPos,
+      },
+    );
     return Map<String, dynamic>.from(result as Map);
   }
 
@@ -111,12 +118,15 @@ class LineupService {
     required int position,
     required String playerSlotId,
   }) async {
-    final result = await _supabase.rpc('set_lineup_slot', params: {
-      'p_match_id': matchId,
-      'p_slot_type': slotType,
-      'p_position': position,
-      'p_player_slot_id': playerSlotId,
-    });
+    final result = await _supabase.rpc(
+      'set_lineup_slot',
+      params: {
+        'p_match_id': matchId,
+        'p_slot_type': slotType,
+        'p_position': position,
+        'p_player_slot_id': playerSlotId,
+      },
+    );
     return Map<String, dynamic>.from(result as Map);
   }
 
@@ -139,10 +149,13 @@ class LineupService {
   /// Publish the lineup and notify all team members (via RPC).
   static Future<Map<String, dynamic>> publishLineup(String matchId) async {
     // ignore: avoid_print
-    print('PUBLISH_LINEUP userId=${_supabase.auth.currentUser?.id} matchId=$matchId');
-    final result = await _supabase.rpc('publish_lineup', params: {
-      'p_match_id': matchId,
-    });
+    print(
+      'PUBLISH_LINEUP userId=${_supabase.auth.currentUser?.id} matchId=$matchId',
+    );
+    final result = await _supabase.rpc(
+      'publish_lineup',
+      params: {'p_match_id': matchId},
+    );
     return Map<String, dynamic>.from(result as Map);
   }
 
@@ -155,10 +168,10 @@ class LineupService {
     required String matchId,
     required String absentUserId,
   }) async {
-    final result = await _supabase.rpc('auto_handle_absence', params: {
-      'p_match_id': matchId,
-      'p_absent_user_id': absentUserId,
-    });
+    final result = await _supabase.rpc(
+      'auto_handle_absence',
+      params: {'p_match_id': matchId, 'p_absent_user_id': absentUserId},
+    );
     return Map<String, dynamic>.from(result as Map);
   }
 
@@ -176,8 +189,10 @@ class LineupService {
     required String toType,
     required int toPos,
   }) async {
-    debugPrint('LINEUP_REORDER: matchId=$matchId '
-        'from=$fromType#$fromPos → to=$toType#$toPos');
+    debugPrint(
+      'LINEUP_REORDER: matchId=$matchId '
+      'from=$fromType#$fromPos → to=$toType#$toPos',
+    );
     try {
       await moveSlot(
         matchId: matchId,
@@ -188,8 +203,10 @@ class LineupService {
       );
       debugPrint('LINEUP_REORDER success: matchId=$matchId');
     } catch (e, st) {
-      debugPrint('LINEUP_REORDER error: matchId=$matchId '
-          'from=$fromType#$fromPos → to=$toType#$toPos err=$e');
+      debugPrint(
+        'LINEUP_REORDER error: matchId=$matchId '
+        'from=$fromType#$fromPos → to=$toType#$toPos err=$e',
+      );
       debugPrint('LINEUP_REORDER stackTrace: $st');
       rethrow; // Caller (widget) handles rollback
     }
@@ -200,13 +217,12 @@ class LineupService {
   /// Build a unified ordered list: starters first, then reserves,
   /// each sorted by position ASC.  Returns the combined list.
   static List<Map<String, dynamic>> buildOrderedSlots(
-      List<Map<String, dynamic>> slots) {
+    List<Map<String, dynamic>> slots,
+  ) {
     final starters = slots.where((s) => s['slot_type'] == 'starter').toList()
-      ..sort(
-          (a, b) => (a['position'] as int).compareTo(b['position'] as int));
+      ..sort((a, b) => (a['position'] as int).compareTo(b['position'] as int));
     final reserves = slots.where((s) => s['slot_type'] == 'reserve').toList()
-      ..sort(
-          (a, b) => (a['position'] as int).compareTo(b['position'] as int));
+      ..sort((a, b) => (a['position'] as int).compareTo(b['position'] as int));
     return [...starters, ...reserves];
   }
 

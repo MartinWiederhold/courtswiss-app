@@ -35,14 +35,17 @@ class CarpoolService {
       throw Exception('Nicht eingeloggt – bitte App neu starten.');
     }
 
-    final result = await _supabase.rpc('cs_upsert_carpool_offer', params: {
-      'p_team_id': teamId,
-      'p_match_id': matchId,
-      'p_seats_total': seatsTotal,
-      'p_start_location': startLocation,
-      'p_note': note,
-      'p_depart_at': departAt?.toUtc().toIso8601String(),
-    });
+    final result = await _supabase.rpc(
+      'cs_upsert_carpool_offer',
+      params: {
+        'p_team_id': teamId,
+        'p_match_id': matchId,
+        'p_seats_total': seatsTotal,
+        'p_start_location': startLocation,
+        'p_note': note,
+        'p_depart_at': departAt?.toUtc().toIso8601String(),
+      },
+    );
 
     // Validate the RPC returned a usable offer id
     final offerId = result?.toString();
@@ -61,19 +64,19 @@ class CarpoolService {
 
   /// Join a carpool offer as passenger.
   static Future<void> join(String offerId) async {
-    debugPrint('CARPOOL_JOIN: offerId=$offerId uid=${_supabase.auth.currentUser?.id}');
-    await _supabase.rpc('cs_join_carpool', params: {
-      'p_offer_id': offerId,
-    });
+    debugPrint(
+      'CARPOOL_JOIN: offerId=$offerId uid=${_supabase.auth.currentUser?.id}',
+    );
+    await _supabase.rpc('cs_join_carpool', params: {'p_offer_id': offerId});
     debugPrint('CARPOOL_JOIN: success');
   }
 
   /// Leave a carpool offer.
   static Future<void> leave(String offerId) async {
-    debugPrint('CARPOOL_LEAVE: offerId=$offerId uid=${_supabase.auth.currentUser?.id}');
-    await _supabase.rpc('cs_leave_carpool', params: {
-      'p_offer_id': offerId,
-    });
+    debugPrint(
+      'CARPOOL_LEAVE: offerId=$offerId uid=${_supabase.auth.currentUser?.id}',
+    );
+    await _supabase.rpc('cs_leave_carpool', params: {'p_offer_id': offerId});
     debugPrint('CARPOOL_LEAVE: success');
   }
 
@@ -83,8 +86,7 @@ class CarpoolService {
   ///
   /// Returns raw rows including embedded passengers.
   /// Throws on query error (does NOT catch internally).
-  static Future<List<Map<String, dynamic>>> listOffers(
-      String matchId) async {
+  static Future<List<Map<String, dynamic>>> listOffers(String matchId) async {
     final uid = _supabase.auth.currentUser?.id;
     debugPrint('CARPOOL_QUERY: matchId=$matchId uid=$uid');
     final rows = await _supabase
@@ -115,9 +117,7 @@ class CarpoolService {
         final driverName = _resolveUserName(driverId, claimedMap, profiles);
         offers.add(CarpoolOffer.fromMap(row, driverName: driverName));
       } catch (e) {
-        debugPrint(
-          'CARPOOL_PARSE ERROR: $e — row keys: ${row.keys.toList()}',
-        );
+        debugPrint('CARPOOL_PARSE ERROR: $e — row keys: ${row.keys.toList()}');
       }
     }
     return offers;
@@ -140,8 +140,8 @@ class CarpoolService {
     // 2. Try profile
     final profile = profiles[userId];
     if (profile != null) {
-      final nick = profile['display_name'] as String? ??
-          profile['nickname'] as String?;
+      final nick =
+          profile['display_name'] as String? ?? profile['nickname'] as String?;
       if (nick != null && nick.isNotEmpty) return nick;
     }
     // 3. Fallback
@@ -150,7 +150,9 @@ class CarpoolService {
 
   /// Delete a carpool offer (driver only).
   static Future<void> deleteOffer(String offerId) async {
-    debugPrint('CARPOOL_DELETE: offerId=$offerId uid=${_supabase.auth.currentUser?.id}');
+    debugPrint(
+      'CARPOOL_DELETE: offerId=$offerId uid=${_supabase.auth.currentUser?.id}',
+    );
     await _supabase.from('cs_carpool_offers').delete().eq('id', offerId);
     debugPrint('CARPOOL_DELETE: success');
   }

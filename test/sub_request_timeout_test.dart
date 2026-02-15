@@ -3,15 +3,11 @@ import 'package:swisscourt/utils/sub_request_timeout.dart';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-Map<String, dynamic> _req({
-  String status = 'pending',
-  String? expiresAt,
-}) =>
-    {
-      'id': 'req-1',
-      'status': status,
-      if (expiresAt != null) 'expires_at': expiresAt,
-    };
+Map<String, dynamic> _req({String status = 'pending', String? expiresAt}) => {
+  'id': 'req-1',
+  'status': status,
+  if (expiresAt != null) 'expires_at': expiresAt,
+};
 
 void main() {
   // ═════════════════════════════════════════════════════════════
@@ -56,25 +52,13 @@ void main() {
 
   group('isRequestExpired', () {
     test('pending + expires_at in the past → expired', () {
-      final req = _req(
-        status: 'pending',
-        expiresAt: '2026-01-01T00:00:00Z',
-      );
-      expect(
-        isRequestExpired(req, now: DateTime.utc(2026, 2, 1)),
-        isTrue,
-      );
+      final req = _req(status: 'pending', expiresAt: '2026-01-01T00:00:00Z');
+      expect(isRequestExpired(req, now: DateTime.utc(2026, 2, 1)), isTrue);
     });
 
     test('pending + expires_at in the future → not expired', () {
-      final req = _req(
-        status: 'pending',
-        expiresAt: '2026-03-01T00:00:00Z',
-      );
-      expect(
-        isRequestExpired(req, now: DateTime.utc(2026, 2, 1)),
-        isFalse,
-      );
+      final req = _req(status: 'pending', expiresAt: '2026-03-01T00:00:00Z');
+      expect(isRequestExpired(req, now: DateTime.utc(2026, 2, 1)), isFalse);
     });
 
     test('pending + no expires_at → not expired', () {
@@ -83,10 +67,7 @@ void main() {
     });
 
     test('status=expired → expired regardless of time', () {
-      final req = _req(
-        status: 'expired',
-        expiresAt: '2099-12-31T23:59:59Z',
-      );
+      final req = _req(status: 'expired', expiresAt: '2099-12-31T23:59:59Z');
       expect(isRequestExpired(req), isTrue);
     });
 
@@ -105,25 +86,13 @@ void main() {
 
   group('isRequestActionable', () {
     test('pending + future expiry → actionable', () {
-      final req = _req(
-        status: 'pending',
-        expiresAt: '2026-03-01T00:00:00Z',
-      );
-      expect(
-        isRequestActionable(req, now: DateTime.utc(2026, 2, 1)),
-        isTrue,
-      );
+      final req = _req(status: 'pending', expiresAt: '2026-03-01T00:00:00Z');
+      expect(isRequestActionable(req, now: DateTime.utc(2026, 2, 1)), isTrue);
     });
 
     test('pending + past expiry → not actionable', () {
-      final req = _req(
-        status: 'pending',
-        expiresAt: '2026-01-01T00:00:00Z',
-      );
-      expect(
-        isRequestActionable(req, now: DateTime.utc(2026, 2, 1)),
-        isFalse,
-      );
+      final req = _req(status: 'pending', expiresAt: '2026-01-01T00:00:00Z');
+      expect(isRequestActionable(req, now: DateTime.utc(2026, 2, 1)), isFalse);
     });
 
     test('accepted → not actionable', () {
@@ -154,10 +123,7 @@ void main() {
 
     test('past expiry → "abgelaufen"', () {
       final req = _req(expiresAt: '2026-01-01T00:00:00Z');
-      expect(
-        expiresInLabel(req, now: DateTime.utc(2026, 2, 1)),
-        'abgelaufen',
-      );
+      expect(expiresInLabel(req, now: DateTime.utc(2026, 2, 1)), 'abgelaufen');
     });
 
     test('< 1 minute remaining → "läuft gleich ab"', () {

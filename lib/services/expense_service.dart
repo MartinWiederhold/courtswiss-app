@@ -94,10 +94,10 @@ class ExpenseService {
       'uid=${_supabase.auth.currentUser?.id}',
     );
 
-    await _supabase.rpc('cs_mark_expense_share_paid', params: {
-      'p_share_id': shareId,
-      'p_paid': paid,
-    });
+    await _supabase.rpc(
+      'cs_mark_expense_share_paid',
+      params: {'p_share_id': shareId, 'p_paid': paid},
+    );
 
     debugPrint('EXPENSE_MARK_PAID: success');
   }
