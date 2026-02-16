@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../l10n/app_localizations.dart';
 import '../models/sport.dart';
 import '../services/team_service.dart';
 import '../services/team_player_service.dart';
@@ -20,6 +21,7 @@ class CreateTeamScreen extends StatefulWidget {
 
 class _CreateTeamScreenState extends State<CreateTeamScreen> {
   static const String _sportKey = 'tennis';
+  late AppLocalizations l;
 
   final _nameCtrl = TextEditingController();
   final _leagueCtrl = TextEditingController(text: '3. Liga Herren');
@@ -35,6 +37,12 @@ class _CreateTeamScreenState extends State<CreateTeamScreen> {
   String _rankingCountry = 'CH';
   int? _rankingValue;
   String? _rankingError;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    l = AppLocalizations.of(context)!;
+  }
 
   @override
   void dispose() {
@@ -55,24 +63,24 @@ class _CreateTeamScreenState extends State<CreateTeamScreen> {
     final captainName = _captainNameCtrl.text.trim();
 
     if (name.isEmpty) {
-      CsToast.error(context, 'Bitte Team Name eingeben.');
+      CsToast.error(context, l.enterTeamName);
       return;
     }
     if (captainName.length < 2) {
-      CsToast.error(context, 'Bitte deinen Namen eingeben (min. 2 Zeichen).');
+      CsToast.error(context, l.enterCaptainName);
       return;
     }
     if (year == null) {
-      CsToast.error(context, 'Bitte gültiges Saison-Jahr eingeben.');
+      CsToast.error(context, l.invalidSeasonYear);
       return;
     }
 
     // Tennis + playsSelf → ranking required
     if (_playsSelf && _rankingValue == null) {
       setState(() {
-        _rankingError = 'Bitte Ranking auswählen.';
+        _rankingError = l.selectRankingError;
       });
-      CsToast.error(context, 'Bitte Ranking auswählen.');
+      CsToast.error(context, l.selectRankingError);
       return;
     }
 
@@ -102,11 +110,11 @@ class _CreateTeamScreenState extends State<CreateTeamScreen> {
       }
 
       if (!mounted) return;
-      CsToast.success(context, 'Team erstellt');
+      CsToast.success(context, l.teamCreatedToast);
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Team konnte nicht erstellt werden. Bitte versuche es erneut.');
+      CsToast.error(context, l.teamCreateError);
       setState(() => _submitting = false);
     }
   }
@@ -175,7 +183,7 @@ class _CreateTeamScreenState extends State<CreateTeamScreen> {
             bottom: 20,
             right: 20,
             child: Text(
-              'Team erstellen',
+              l.createTeamTitle,
               style: CsTextStyles.onDarkPrimary.copyWith(
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
@@ -237,12 +245,12 @@ class _CreateTeamScreenState extends State<CreateTeamScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Team info fields
-                        Text('Club Name / Team Name *', style: CsTextStyles.labelSmall),
+                        Text(l.teamNameLabel, style: CsTextStyles.labelSmall),
                         const SizedBox(height: 6),
                         TextField(
                           controller: _nameCtrl,
-                          decoration: const InputDecoration(
-                            hintText: 'z.B. TC Winterthur 1',
+                          decoration: InputDecoration(
+                            hintText: l.teamNameHint,
                           ),
                           textCapitalization: TextCapitalization.words,
                           autofocus: true,
@@ -250,20 +258,20 @@ class _CreateTeamScreenState extends State<CreateTeamScreen> {
                         const SizedBox(height: 16),
 
                         Text(
-                          'Liga (optional)',
+                          l.leagueLabel,
                           style: CsTextStyles.labelSmall,
                         ),
                         const SizedBox(height: 6),
                         TextField(
                           controller: _leagueCtrl,
-                          decoration: const InputDecoration(
-                            hintText: 'z.B. 3. Liga Herren',
+                          decoration: InputDecoration(
+                            hintText: l.leagueHint,
                           ),
                           textCapitalization: TextCapitalization.words,
                         ),
                         const SizedBox(height: 16),
 
-                        Text('Saison Jahr', style: CsTextStyles.labelSmall),
+                        Text(l.seasonYearLabel, style: CsTextStyles.labelSmall),
                         const SizedBox(height: 6),
                         TextField(
                           controller: _yearCtrl,
@@ -278,25 +286,25 @@ class _CreateTeamScreenState extends State<CreateTeamScreen> {
                         const SizedBox(height: 16),
 
                         Text(
-                          'Wie heisst du?',
+                          l.whatsYourName,
                           style: CsTextStyles.titleSmall,
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Dein Name, damit dein Team dich erkennt.',
+                          l.captainNamePrompt,
                           style: CsTextStyles.bodySmall,
                         ),
                         const SizedBox(height: 12),
 
                         Text(
-                          'Dein Name im Team *',
+                          l.captainNameRequired,
                           style: CsTextStyles.labelSmall,
                         ),
                         const SizedBox(height: 6),
                         TextField(
                           controller: _captainNameCtrl,
-                          decoration: const InputDecoration(
-                            hintText: 'z.B. Max, Sandro, Martin W.',
+                          decoration: InputDecoration(
+                            hintText: l.nicknameHint,
                           ),
                           textCapitalization: TextCapitalization.words,
                           maxLength: 30,
@@ -324,12 +332,12 @@ class _CreateTeamScreenState extends State<CreateTeamScreen> {
                                       CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Ich spiele selbst',
+                                      l.captainPlaysTitle,
                                       style: CsTextStyles.titleSmall,
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      'Aktiviere dies, wenn du als Captain auch spielst.',
+                                      l.createTeamPlaysSelfSubtitle,
                                       style: CsTextStyles.bodySmall,
                                     ),
                                   ],
@@ -399,7 +407,7 @@ class _CreateTeamScreenState extends State<CreateTeamScreen> {
             ),
             child: CsPrimaryButton(
               onPressed: _submitting ? null : _submit,
-              label: 'Erstellen',
+              label: l.createButton,
               loading: _submitting,
             ),
           ),

@@ -393,3 +393,20 @@ entrypoint = "./functions/expire-sub-requests/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/expire-sub-requests/*.html" ]
+
+# ── send-push: Process pending FCM deliveries ────────────────
+# Call via cron every 1–2 minutes.
+# Requires GOOGLE_SERVICE_ACCOUNT_JSON secret.
+[functions.send-push]
+enabled = true
+verify_jwt = false
+import_map = "./functions/send-push/deno.json"
+entrypoint = "./functions/send-push/index.ts"
+
+# ── match-reminders: Create 24h/2h reminder events ───────────
+# Call via cron every 5 minutes.
+[functions.match-reminders]
+enabled = true
+verify_jwt = false
+import_map = "./functions/match-reminders/deno.json"
+entrypoint = "./functions/match-reminders/index.ts"

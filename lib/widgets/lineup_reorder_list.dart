@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../l10n/app_localizations.dart';
 import '../utils/lineup_reorder.dart';
 import 'ui/cs_toast.dart';
 
@@ -156,7 +157,7 @@ class _LineupReorderListState extends State<LineupReorderList> {
 
       // Rollback optimistic update to the guaranteed deep-copy snapshot.
       setState(() => _currentItems = before);
-      CsToast.error(context, 'Änderung konnte nicht gespeichert werden.');
+      CsToast.error(context, AppLocalizations.of(context)!.changeSaveError);
     } finally {
       if (mounted) {
         _persisting = false;
@@ -166,6 +167,7 @@ class _LineupReorderListState extends State<LineupReorderList> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final starters = _currentItems
         .where((s) => s['slot_type'] == 'starter')
         .length;
@@ -179,13 +181,13 @@ class _LineupReorderListState extends State<LineupReorderList> {
         Row(
           children: [
             Text(
-              'Starter ($starters)',
+              l.starterCountHeader('$starters'),
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             if (reserves > 0) ...[
               const SizedBox(width: 12),
               Text(
-                '· Ersatz ($reserves)',
+                '· ${l.reserveCountHeader('$reserves')}',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: Colors.orange.shade700,
@@ -197,7 +199,7 @@ class _LineupReorderListState extends State<LineupReorderList> {
         if (widget.canReorder) ...[
           const SizedBox(height: 2),
           Text(
-            widget.headerHint ?? 'Halte ☰ und ziehe um Positionen zu tauschen',
+            widget.headerHint ?? l.lineupReorderHint,
             style: TextStyle(
               fontSize: 11,
               color: Colors.grey.shade600,

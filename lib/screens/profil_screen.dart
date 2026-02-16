@@ -1,14 +1,20 @@
 // ── DEV NOTE ──────────────────────────────────────────────────────
 // New screen: "Profil" tab in bottom navigation.
 // Replaces the settings gear-icon in the TeamsScreen header.
-// Contains: user info card, notification preferences (inline), app info.
+// Contains: user info card, language switch, notification preferences
+// (inline), app info.
 // Created as part of bottom-tab-bar navigation refactor.
+// UPDATED: Added language switch section (de/en) for BMAD Step 1.
 // ──────────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../l10n/app_localizations.dart';
+import '../main.dart' show localeController;
+import '../services/account_service.dart';
 import '../services/push_prefs_service.dart';
 import '../theme/cs_theme.dart';
+import '../widgets/delete_account_dialog.dart';
 import '../widgets/ui/ui.dart';
 import 'auth_screen.dart';
 
@@ -44,8 +50,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      CsToast.error(
-          context, 'Einstellungen konnten nicht geladen werden.');
+      final l = AppLocalizations.of(context)!;
+      CsToast.error(context, l.prefsLoadError);
     }
   }
 
@@ -81,12 +87,21 @@ class _ProfilScreenState extends State<ProfilScreen> {
     } catch (_) {
       if (!mounted) return;
       rollback();
-      CsToast.error(context,
-          'Einstellungen konnten nicht gespeichert werden.');
+      final l = AppLocalizations.of(context)!;
+      CsToast.error(context, l.prefsSaveError);
     }
   }
 
   bool _isTypeEnabled(String type) => !_typesDisabled.contains(type);
+
+  // ── Locale helpers ─────────────────────────────────────
+
+  String _currentLocaleCode() {
+    final loc = localeController.locale;
+    if (loc != null) return loc.languageCode;
+    // When null (system), resolve from the actual app locale
+    return Localizations.localeOf(context).languageCode;
+  }
 
   // ══════════════════════════════════════════════════════════
   //  BUILD
@@ -94,13 +109,14 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final user = Supabase.instance.client.auth.currentUser;
     final email = user?.email;
     final isAnon = user?.isAnonymous ?? true;
 
     return CsScaffoldList(
-      appBar: const CsGlassAppBar(
-        title: 'Profil',
+      appBar: CsGlassAppBar(
+        title: l.profileTitle,
         automaticallyImplyLeading: false,
       ),
       body: _loading
@@ -146,7 +162,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                                 CrossAxisAlignment.start,
                             children: [
                               Text(
-                                email ?? 'Anonymer Spieler',
+                                email ?? l.anonymousPlayer,
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
@@ -156,8 +172,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
                               const SizedBox(height: 2),
                               Text(
                                 isAnon
-                                    ? 'Nicht eingeloggt'
-                                    : 'Eingeloggt',
+                                    ? l.notLoggedIn
+                                    : l.loggedIn,
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: CsColors.gray500,
@@ -173,9 +189,68 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
                 const SizedBox(height: 14),
 
+                // ── Language switch ──────────────────────────
+                CsAnimatedEntrance(
+                  delay: const Duration(milliseconds: 30),
+                  child: CsLightCard(
+                    color: Colors.white,
+                    border: Border.all(
+                        color: CsColors.gray200, width: 0.5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.language,
+                              color: CsColors.gray800,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              l.languageTitle,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: CsColors.gray900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _LanguageTile(
+                          label: l.german,
+                          flag: '🇩🇪',
+                          selected: _currentLocaleCode() == 'de',
+                          onTap: () =>
+                              localeController.setLocale(const Locale('de')),
+                        ),
+                        Divider(
+                          height: 1,
+                          thickness: 0.5,
+                          color: CsColors.gray200,
+                        ),
+                        _LanguageTile(
+                          label: l.english,
+                          flag: '🇬🇧',
+                          selected: _currentLocaleCode() == 'en',
+                          onTap: () =>
+                              localeController.setLocale(const Locale('en')),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
                 // ── Push notifications toggle ────────────────
                 CsAnimatedEntrance(
-                  delay: const Duration(milliseconds: 40),
+                  delay: const Duration(milliseconds: 50),
                   child: CsLightCard(
                     color: Colors.white,
                     border: Border.all(
@@ -198,7 +273,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                                 CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Push-Benachrichtigungen',
+                                l.pushNotifications,
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
@@ -207,7 +282,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Alle Push-Nachrichten ein/aus',
+                                l.pushToggleSubtitle,
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: CsColors.gray500,
@@ -231,7 +306,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
                 // ── Per-type notification toggles ────────────
                 CsAnimatedEntrance(
-                  delay: const Duration(milliseconds: 80),
+                  delay: const Duration(milliseconds: 90),
                   child: CsLightCard(
                     color: Colors.white,
                     border: Border.all(
@@ -248,7 +323,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                           padding:
                               const EdgeInsets.only(bottom: 4),
                           child: Text(
-                            'Einzelne Benachrichtigungen',
+                            l.individualNotifications,
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -284,9 +359,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
-                                        PushPrefsService
-                                            .eventTypeLabel(
-                                                type),
+                                        _eventTypeLabel(l, type),
                                         style: TextStyle(
                                           fontSize: 14,
                                           fontWeight:
@@ -324,7 +397,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
                 // ── Info banner ──────────────────────────────
                 CsAnimatedEntrance(
-                  delay: const Duration(milliseconds: 120),
+                  delay: const Duration(milliseconds: 130),
                   child: CsLightCard(
                     color: const Color(0xFFF7F7F7),
                     border: Border.all(
@@ -346,8 +419,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Push-Nachrichten werden in Kürze aktiviert. '
-                            'Deine Einstellungen werden bereits gespeichert.',
+                            l.pushInfoBanner,
                             style: TextStyle(
                               fontSize: 13,
                               color: CsColors.gray700,
@@ -365,7 +437,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 // ── Account actions ───────────────────────
                 if (isAnon) ...[
                   CsAnimatedEntrance(
-                    delay: const Duration(milliseconds: 160),
+                    delay: const Duration(milliseconds: 170),
                     child: CsLightCard(
                       color: Colors.white,
                       border: Border.all(
@@ -374,8 +446,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                       child: Column(
                         children: [
                           Text(
-                            'Erstelle ein Konto, um eigene Teams zu erstellen '
-                            'und dein Profil zu sichern.',
+                            l.createAccountHint,
                             style: TextStyle(
                               fontSize: 13,
                               color: CsColors.gray600,
@@ -385,13 +456,14 @@ class _ProfilScreenState extends State<ProfilScreen> {
                           ),
                           const SizedBox(height: 14),
                           CsPrimaryButton(
-                            label: 'Registrieren / Anmelden',
+                            label: l.registerLogin,
                             icon: const Icon(Icons.login_rounded, size: 18),
                             onPressed: () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => const AuthScreen(),
+                                  builder: (_) =>
+                                      const AuthScreen(showClose: true),
                                 ),
                               );
                             },
@@ -403,7 +475,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   const SizedBox(height: 14),
                 ] else ...[
                   CsAnimatedEntrance(
-                    delay: const Duration(milliseconds: 160),
+                    delay: const Duration(milliseconds: 170),
                     child: CsLightCard(
                       color: Colors.white,
                       border: Border.all(
@@ -422,7 +494,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                                 size: 18, color: CsColors.error),
                             const SizedBox(width: 8),
                             Text(
-                              'Abmelden',
+                              l.logout,
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
@@ -435,14 +507,71 @@ class _ProfilScreenState extends State<ProfilScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
+
+                  // ── Konto section (delete account) ────────
+                  CsAnimatedEntrance(
+                    delay: const Duration(milliseconds: 190),
+                    child: CsLightCard(
+                      color: Colors.white,
+                      border: Border.all(
+                          color: CsColors.gray200, width: 0.5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.manage_accounts_outlined,
+                                color: CsColors.gray800,
+                                size: 22,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                l.accountSectionTitle,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: CsColors.gray900,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          TextButton(
+                            onPressed: () => _showDeleteAccountDialog(context, l),
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_forever_rounded,
+                                    size: 18, color: CsColors.error),
+                                const SizedBox(width: 8),
+                                Text(
+                                  l.deleteAccount,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: CsColors.error,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
                 ],
 
                 // ── App version ─────────────────────────────
                 CsAnimatedEntrance(
-                  delay: const Duration(milliseconds: 200),
+                  delay: const Duration(milliseconds: 210),
                   child: Center(
                     child: Text(
-                      'CourtSwiss · v1.0.0',
+                      l.appVersion,
                       style: TextStyle(
                         fontSize: 12,
                         color: CsColors.gray400,
@@ -453,6 +582,66 @@ class _ProfilScreenState extends State<ProfilScreen> {
               ],
             ),
     );
+  }
+
+  // ── Delete-account flow ──────────────────────────────────
+
+  Future<void> _showDeleteAccountDialog(
+    BuildContext context,
+    AppLocalizations l,
+  ) async {
+    // 1. Show the confirmation dialog (it manages its own controller).
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => DeleteAccountDialog(
+        confirmWord: l.confirmWordDelete,
+      ),
+    );
+
+    // 2. Safety: check mounted after the async gap.
+    if (!mounted) return;
+
+    // 3. If user cancelled or dismissed, do nothing.
+    if (confirmed != true) return;
+
+    // 4. User confirmed — perform deletion.
+    try {
+      await AccountService.deleteAccount();
+      // Reset locale controller to system default (fire-and-forget).
+      localeController.setLocale(null);
+      // AuthGate will rebuild and show AuthScreen automatically
+      // because signOut was called inside AccountService.deleteAccount().
+    } on PostgrestException catch (e) {
+      debugPrint('deleteAccount PostgrestException: '
+          'code=${e.code} message=${e.message} '
+          'details=${e.details} hint=${e.hint}');
+      if (!mounted) return;
+      CsToast.error(context, '${l.accountDeleteError}: ${e.message}');
+    } on AuthException catch (e) {
+      debugPrint('deleteAccount AuthException: '
+          'statusCode=${e.statusCode} message=${e.message}');
+      if (!mounted) return;
+      CsToast.error(context, '${l.accountDeleteError}: ${e.message}');
+    } catch (e) {
+      debugPrint('deleteAccount error: $e');
+      if (!mounted) return;
+      CsToast.error(context, l.accountDeleteError);
+    }
+  }
+
+  /// Localized event-type labels.
+  String _eventTypeLabel(AppLocalizations l, String type) {
+    switch (type) {
+      case 'lineup_published':
+        return l.lineupPublished;
+      case 'replacement_promoted':
+        return l.replacementPromoted;
+      case 'no_reserve_available':
+        return l.noReserveAvailable;
+      default:
+        return type;
+    }
   }
 
   IconData _eventIcon(String type) {
@@ -466,5 +655,60 @@ class _ProfilScreenState extends State<ProfilScreen> {
       default:
         return Icons.notifications_outlined;
     }
+  }
+}
+
+// ─── Language Tile ─────────────────────────────────────────────────
+/// A compact, tappable row for a single language option.
+class _LanguageTile extends StatelessWidget {
+  final String label;
+  final String flag;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _LanguageTile({
+    required this.label,
+    required this.flag,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(CsRadii.sm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            Text(flag, style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: CsColors.gray900,
+                ),
+              ),
+            ),
+            if (selected)
+              Icon(
+                Icons.check_circle,
+                color: CsColors.emerald,
+                size: 22,
+              )
+            else
+              Icon(
+                Icons.circle_outlined,
+                color: CsColors.gray300,
+                size: 22,
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

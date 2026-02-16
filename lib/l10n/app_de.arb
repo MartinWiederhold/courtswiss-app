@@ -1,0 +1,728 @@
+{
+  "@@locale": "de",
+
+  "tabTeams": "Teams",
+  "tabGames": "Spiele",
+  "tabProfile": "Profil",
+
+  "profileTitle": "Profil",
+  "anonymousPlayer": "Anonymer Spieler",
+  "notLoggedIn": "Nicht eingeloggt",
+  "loggedIn": "Eingeloggt",
+  "pushNotifications": "Push-Benachrichtigungen",
+  "pushToggleSubtitle": "Alle Push-Nachrichten ein/aus",
+  "individualNotifications": "Einzelne Benachrichtigungen",
+  "pushInfoBanner": "Push-Nachrichten werden in K\u00fcrze aktiviert. Deine Einstellungen werden bereits gespeichert.",
+  "createAccountHint": "Erstelle ein Konto, um eigene Teams zu erstellen und dein Profil zu sichern.",
+  "registerLogin": "Registrieren / Anmelden",
+  "logout": "Abmelden",
+  "appVersion": "Lineup \u00b7 v1.0.0",
+  "prefsLoadError": "Einstellungen konnten nicht geladen werden.",
+  "prefsSaveError": "Einstellungen konnten nicht gespeichert werden.",
+  "languageTitle": "Sprache",
+  "german": "Deutsch",
+  "english": "English",
+
+  "myTeams": "Meine Teams",
+  "notifications": "Benachrichtigungen",
+  "howItWorks": "So funktioniert\u2019s",
+  "guideStep1": "Erstelle dein Team \u00fcber das + unten rechts.",
+  "guideStep2": "F\u00fcge Spieler hinzu \u2013 mit Name und optionalem Ranking.",
+  "guideStep3": "Teile den Einladungslink per WhatsApp.",
+  "guideStep4": "Spieler \u00f6ffnen den Link und ordnen sich ihrem Namen zu.",
+  "guideStep5": "Du siehst als Captain, wer bereits verbunden ist.",
+  "guideStep6": "Erstelle Spiele \u2013 die Aufstellung wird nach Ranking sortiert.",
+  "welcomeTitle": "Willkommen bei {appName}",
+  "@welcomeTitle": {
+    "placeholders": {
+      "appName": { "type": "String" }
+    }
+  },
+  "welcomeSubtitle": "Erstelle dein erstes Team und lade Spieler ein.",
+  "understood": "Verstanden",
+  "accountRequired": "Konto erforderlich",
+  "accountRequiredBody": "Um eigene Teams zu erstellen, ben\u00f6tigst du ein Konto. Registriere dich oder melde dich an.",
+  "cancel": "Abbrechen",
+  "deleteTeamTitle": "Team l\u00f6schen?",
+  "deleteTeamBody": "M\u00f6chtest du \u201e{teamName}\u201c endg\u00fcltig l\u00f6schen? Das kann nicht r\u00fcckg\u00e4ngig gemacht werden.",
+  "@deleteTeamBody": {
+    "placeholders": {
+      "teamName": { "type": "String" }
+    }
+  },
+  "delete": "L\u00f6schen",
+  "teamDeleted": "Team \u201e{teamName}\u201c gel\u00f6scht",
+  "@teamDeleted": {
+    "placeholders": {
+      "teamName": { "type": "String" }
+    }
+  },
+  "teamDeleteError": "Team konnte nicht gel\u00f6scht werden.",
+  "removeTeamTitle": "Team entfernen?",
+  "removeTeamBody": "Du entfernst \u201e{teamName}\u201c nur aus deiner Liste. Das Team bleibt f\u00fcr den Captain und andere Mitglieder bestehen.",
+  "@removeTeamBody": {
+    "placeholders": {
+      "teamName": { "type": "String" }
+    }
+  },
+  "remove": "Entfernen",
+  "teamRemoved": "Team \u201e{teamName}\u201c entfernt",
+  "@teamRemoved": {
+    "placeholders": {
+      "teamName": { "type": "String" }
+    }
+  },
+  "teamRemoveError": "Team konnte nicht entfernt werden.",
+  "ownTeams": "Eigene Teams",
+  "sharedTeams": "Geteilte Teams",
+  "connectionError": "Verbindungsproblem",
+  "dataLoadError": "Daten konnten nicht geladen werden.",
+  "tryAgain": "Nochmal versuchen",
+  "season": "Saison {year}",
+  "@season": {
+    "placeholders": {
+      "year": { "type": "String" }
+    }
+  },
+
+  "gamesTitle": "Spiele",
+  "refresh": "Aktualisieren",
+  "noGamesYet": "Noch keine Spiele",
+  "noGamesSubtitle": "Erstelle dein erstes Spiel in einem Team.",
+  "home": "Heim",
+  "away": "Ausw\u00e4rts",
+
+  "authWelcome": "Willkommen",
+  "authSubtitle": "Dein Team. Deine Matches.",
+  "login": "Anmelden",
+  "register": "Registrieren",
+  "email": "E-Mail",
+  "password": "Passwort",
+  "forgotPassword": "Passwort vergessen?",
+  "confirmPassword": "Passwort best\u00e4tigen",
+  "passwordHint": "Mind. 8 Zeichen mit mind. 1 Zahl",
+  "passwordMinLength": "Mindestens 8 Zeichen",
+  "passwordNeedsNumber": "Mind. 1 Zahl erforderlich",
+  "invalidEmail": "Bitte eine g\u00fcltige E-Mail eingeben.",
+  "enterPassword": "Bitte Passwort eingeben.",
+  "passwordsMismatch": "Passw\u00f6rter stimmen nicht \u00fcberein.",
+  "loginFailed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
+  "registerFailed": "Registrierung fehlgeschlagen. Bitte versuche es erneut.",
+  "invalidCredentials": "E-Mail oder Passwort ung\u00fcltig.",
+  "emailNotConfirmed": "E-Mail noch nicht best\u00e4tigt. Bitte pr\u00fcfe dein Postfach.",
+  "emailAlreadyRegistered": "Diese E-Mail ist bereits registriert. Bitte melde dich an.",
+  "rateLimited": "Zu viele Versuche. Bitte warte kurz.",
+  "errorPrefix": "Fehler: {message}",
+  "@errorPrefix": {
+    "placeholders": {
+      "message": { "type": "String" }
+    }
+  },
+
+  "verificationPendingTitle": "E-Mail pr\u00fcfen",
+  "verificationPendingBody": "Wenn ein Konto mit dieser E-Mail existiert, haben wir dir eine Best\u00e4tigungs-E-Mail geschickt. Bitte pr\u00fcfe Posteingang und Spam.",
+  "resendConfirmationEmail": "Best\u00e4tigungs-Mail erneut senden",
+  "resendEmailSuccess": "E-Mail wurde gesendet (sofern m\u00f6glich).",
+  "resendEmailRateLimit": "Bitte warte ein paar Minuten und versuche es erneut.",
+  "alreadyHaveAccountLogin": "Du hast bereits ein Konto? Anmelden",
+
+  "save": "Speichern",
+  "matchDetails": "Spieldetails",
+  "opponent": "Gegner *",
+  "opponentHint": "z.B. TC Z\u00fcrich",
+  "pleaseComplete": "Bitte ausf\u00fcllen",
+  "dateAndTime": "Datum & Zeit",
+  "chooseDate": "Datum w\u00e4hlen",
+  "chooseTime": "Uhrzeit w\u00e4hlen",
+  "homeGame": "Heimspiel",
+  "awayGame": "Ausw\u00e4rtsspiel",
+  "details": "Details",
+  "location": "Ort",
+  "locationHint": "z.B. Tennisclub Bern, Platz 3",
+  "noteOptional": "Notiz (optional)",
+  "noteHint": "z.B. Treffpunkt 09:30",
+  "chooseDateAndTime": "Bitte Datum und Uhrzeit w\u00e4hlen",
+  "editMatch": "Spiel bearbeiten",
+  "addMatch": "Spiel hinzuf\u00fcgen",
+  "saveChanges": "\u00c4nderungen speichern",
+  "createMatch": "Spiel erstellen",
+  "matchUpdated": "Spiel aktualisiert",
+  "matchCreated": "Spiel erstellt",
+  "matchCreateError": "Spiel konnte nicht erstellt werden. Bitte versuche es erneut.",
+
+  "lineupPublished": "Aufstellung ver\u00f6ffentlicht",
+  "replacementPromoted": "Ersatz nachger\u00fcckt",
+  "noReserveAvailable": "Kein Ersatz verf\u00fcgbar",
+
+  "accountSectionTitle": "Konto",
+  "deleteAccount": "Konto l\u00f6schen",
+  "deleteAccountTitle": "Konto l\u00f6schen?",
+  "deleteAccountBody": "Dein Konto und alle damit verbundenen Daten werden unwiderruflich gel\u00f6scht. Diese Aktion kann nicht r\u00fcckg\u00e4ngig gemacht werden.",
+  "typeToConfirm": "Tippe \u201e{confirmWord}\u201c zur Best\u00e4tigung",
+  "@typeToConfirm": {
+    "placeholders": {
+      "confirmWord": { "type": "String" }
+    }
+  },
+  "confirmWordDelete": "L\u00d6SCHEN",
+  "deleting": "Wird gel\u00f6scht\u2026",
+  "accountDeleted": "Konto gel\u00f6scht",
+  "accountDeleteError": "Konto konnte nicht gel\u00f6scht werden. Bitte versuche es erneut.",
+
+  "teamDetailTabOverview": "\u00dcbersicht",
+  "teamDetailTabTeam": "Team",
+  "teamDetailTabMatches": "Spiele",
+
+  "teamInfoBadge": "Team Info",
+  "teamInfoTeam": "Team",
+  "teamInfoClub": "Club",
+  "teamInfoLeague": "Liga",
+  "teamInfoSeason": "Saison",
+  "teamInfoCaptain": "Kapit\u00e4n",
+
+  "nextMatch": "N\u00e4chstes Spiel",
+
+  "playersLabel": "Spieler",
+  "connectedLabel": "Verbunden",
+
+  "captainPlaysTitle": "Ich spiele selbst",
+  "captainPlaysSubtitle": "Aktiviere dies, wenn du als Captain auch spielst und in der Aufstellung erscheinen m\u00f6chtest.",
+
+  "inviteLinkTitle": "Einladungslink",
+  "inviteLinkDescription": "Teile den Einladungslink, damit sich Spieler dem Team anschliessen k\u00f6nnen.",
+  "shareLink": "Link teilen",
+  "inviteLinkCreated": "Einladungslink erstellt",
+  "inviteLinkError": "Einladungslink konnte nicht erstellt werden.",
+  "shareInviteTooltip": "Einladungslink teilen",
+  "shareSubject": "Lineup Team-Einladung",
+
+  "teamSectionCount": "Team ({count})",
+  "@teamSectionCount": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "connectedPlayersTitle": "Verbundene Spieler ({count})",
+  "@connectedPlayersTitle": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+
+  "addPlayer": "Spieler hinzuf\u00fcgen",
+  "firstName": "Vorname *",
+  "firstNameHint": "Max",
+  "lastName": "Nachname *",
+  "lastNameHint": "Muster",
+  "enterFirstAndLastName": "Bitte Vor- und Nachname eingeben.",
+  "selectRanking": "Bitte ein Ranking ausw\u00e4hlen.",
+  "genericError": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+  "addButton": "Hinzuf\u00fcgen",
+
+  "whatsYourName": "Wie heisst du?",
+  "nicknamePrompt": "Bitte gib deinen Namen ein, damit dein Team dich erkennt.",
+  "yourTeamName": "Dein Name im Team",
+  "nicknameHint": "z.B. Max, Sandro, Martin W.",
+  "minTwoChars": "Mindestens 2 Zeichen",
+  "nicknameSaveError": "Spieler konnte nicht hinzugef\u00fcgt werden.",
+  "nameSaved": "Name gespeichert",
+
+  "changeName": "Name \u00e4ndern",
+  "nameUpdated": "Name aktualisiert",
+  "nameSaveError": "Name konnte nicht gespeichert werden.",
+
+  "changeSaveError": "\u00c4nderung konnte nicht gespeichert werden.",
+
+  "noPlayersYet": "Noch keine Spieler",
+  "noPlayersEmptyBody": "Noch keine Spieler vorhanden.\nF\u00fcge Spieler mit Name und Ranking hinzu.",
+  "shareInviteSubtitle": "Teile den Einladungslink, damit sich Spieler zuordnen k\u00f6nnen.",
+  "noMatchesTeamSubtitle": "Erstelle ein Spiel, damit dein Team reagieren kann.",
+
+  "chipOpen": "Offen",
+  "chipAssigned": "Zugeordnet",
+  "chipYou": "Du",
+  "chipConnected": "Verbunden",
+  "chipCaptain": "Captain",
+  "chipCaptainPlaying": "Captain (spielend)",
+  "chipPlayer": "Spieler",
+
+  "changeAvatarTooltip": "Profilbild \u00e4ndern",
+  "claimSlotTooltip": "Spieler-Slot zuordnen",
+  "changeNameTooltip": "Name \u00e4ndern",
+
+  "actionError": "Aktion konnte nicht ausgef\u00fchrt werden.",
+
+  "avatarUpdated": "Profilbild aktualisiert",
+  "avatarUploadError": "Bild konnte nicht hochgeladen werden.",
+
+  "storageSetupRequired": "Storage Setup erforderlich",
+  "storageSetupBody": "Der Storage-Bucket \u201eprofile-photos\u201c wurde noch nicht angelegt.\nBitte folge diesen Schritten:",
+  "storageStep1": "Supabase Dashboard \u2192 Storage \u2192 \u201eNew bucket\u201c",
+  "storageStep2": "Name exakt: profile-photos",
+  "storageStep3": "Public: OFF (private)",
+  "storageStep4": "SQL Editor \u2192 untenstehende Policies ausf\u00fchren",
+  "sqlCopied": "SQL in Zwischenablage kopiert",
+  "copySql": "SQL kopieren",
+  "closeButton": "Schliessen",
+  "notificationsTooltip": "Benachrichtigungen",
+  "removePlayer": "Entfernen",
+
+  "matchTabOverview": "\u00dcbersicht",
+  "matchTabLineup": "Aufstellung",
+  "matchTabMore": "Mehr",
+
+  "editLabel": "Bearbeiten",
+
+  "matchConfirmedProgress": "{yes} von {total} zugesagt",
+  "@matchConfirmedProgress": {
+    "placeholders": {
+      "yes": { "type": "String" },
+      "total": { "type": "String" }
+    }
+  },
+
+  "myAvailability": "Meine Verf\u00fcgbarkeit",
+  "availYes": "Zugesagt",
+  "availNo": "Abgesagt",
+  "availMaybe": "Unsicher",
+  "availNoResponse": "Keine Antwort",
+  "availabilitiesTitle": "Verf\u00fcgbarkeiten",
+  "respondedProgress": "{responded} von {total} haben geantwortet",
+  "@respondedProgress": {
+    "placeholders": {
+      "responded": { "type": "String" },
+      "total": { "type": "String" }
+    }
+  },
+  "playerAvailabilities": "Verf\u00fcgbarkeiten der Spieler",
+
+  "subRequestSection": "Ersatz",
+  "noSubRequests": "Keine Ersatzanfragen vorhanden. Bei Absagen kannst du hier Ersatz anfragen.",
+
+  "generateLineupTitle": "Aufstellung generieren",
+  "generateButton": "Generieren",
+  "lineupGenerateDescription": "Die Aufstellung wird anhand des Rankings und der Verf\u00fcgbarkeiten erstellt.\nDu kannst danach manuell tauschen.\n\nEine bestehende Aufstellung wird \u00fcberschrieben.",
+  "starterLabel": "Starter",
+  "reserveLabel": "Ersatz",
+  "includeMaybeTitle": "Unsichere ber\u00fccksichtigen",
+  "includeMaybeSubtitle": "Spieler mit \u201eUnsicher\u201c werden erg\u00e4nzend aufgestellt.",
+  "lineupCreatedToast": "Aufstellung erstellt: {starters} Starter, {reserves} Ersatz",
+  "@lineupCreatedToast": {
+    "placeholders": {
+      "starters": { "type": "String" },
+      "reserves": { "type": "String" }
+    }
+  },
+
+  "lineupTitle": "Aufstellung",
+  "lineupStatusDraft": "Entwurf",
+  "lineupStatusPublished": "Ver\u00f6ffentlicht",
+  "allSlotsOccupied": "Alle Pl\u00e4tze besetzt",
+  "slotsFreeSingle": "1 Platz frei",
+  "slotsFree": "{count} Pl\u00e4tze frei",
+  "@slotsFree": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "regenerateButton": "Neu generieren",
+  "noLineupYet": "Noch keine Aufstellung vorhanden.",
+  "noLineupYetAdmin": "Noch keine Aufstellung vorhanden.\nTippe auf \u201eGenerieren\u201c, um eine zu erstellen.",
+  "captainCreatingLineup": "Captain erstellt gerade die Aufstellung \u2026",
+  "subChainActive": "Ersatzkette aktiv: Bei Absage r\u00fcckt der n\u00e4chste Ersatz automatisch nach.",
+  "starterCountHeader": "Starter ({count})",
+  "@starterCountHeader": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "reserveCountHeader": "Ersatz ({count})",
+  "@reserveCountHeader": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "sendLineupToTeam": "Info an Team senden",
+  "lineupPublishedBanner": "Aufstellung ver\u00f6ffentlicht. Absagen l\u00f6sen automatisches Nachr\u00fccken aus.",
+  "youStarter": "Du \u00b7 Starter",
+  "youReserve": "Du \u00b7 Ersatz",
+
+  "publishLineupTitle": "Aufstellung ver\u00f6ffentlichen?",
+  "publishSendButton": "Senden",
+  "publishLineupBody": "Alle Team-Mitglieder werden \u00fcber die Aufstellung informiert (In-App + Push).",
+  "publishLineupConfirm": "M\u00f6chtest du die Aufstellung jetzt senden?",
+  "lineupPublishedToast": "Aufstellung ver\u00f6ffentlicht \u2013 {recipients} Benachrichtigungen gesendet",
+  "@lineupPublishedToast": {
+    "placeholders": {
+      "recipients": { "type": "String" }
+    }
+  },
+
+  "violationSingle": "\u26a0\ufe0f 1 Regelverstoss erkannt",
+  "violationMultiple": "\u26a0\ufe0f {count} Regelverst\u00f6sse erkannt",
+  "@violationMultiple": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "violationMore": "\u2026 und {count} weitere",
+  "@violationMore": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "publishAnyway": "Ver\u00f6ffentlichung trotzdem m\u00f6glich.",
+
+  "lineupPublishedNoReorder": "Aufstellung ist ver\u00f6ffentlicht \u2013 Reihenfolge kann nicht mehr ge\u00e4ndert werden.",
+  "lineupBeingGenerated": "Aufstellung wird generiert \u2026",
+  "lineupBeingPublished": "Aufstellung wird ver\u00f6ffentlicht \u2026",
+  "reorderNotPossible": "Reihenfolge \u00e4ndern ist momentan nicht m\u00f6glich.",
+
+  "deleteMatchTitle": "Spiel l\u00f6schen?",
+  "deleteMatchBody": "M\u00f6chtest du das Spiel gegen \u201e{opponent}\u201c wirklich l\u00f6schen?\n\nAlle Verf\u00fcgbarkeiten und Aufstellungen gehen verloren.",
+  "@deleteMatchBody": {
+    "placeholders": {
+      "opponent": { "type": "String" }
+    }
+  },
+  "matchDeleted": "Spiel gel\u00f6scht",
+
+  "subRequestSentToast": "Ersatzanfrage an {name} gesendet",
+  "@subRequestSentToast": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "noSubAvailable": "Kein verf\u00fcgbarer Ersatzspieler gefunden.",
+  "subRequestAcceptedToast": "Ersatzanfrage angenommen",
+  "subRequestDeclinedToast": "Ersatzanfrage abgelehnt",
+  "somethingWentWrong": "Etwas ist schiefgelaufen.",
+
+  "subRequestsTitle": "Ersatzanfragen",
+  "pendingCountChip": "{count} ausstehend",
+  "@pendingCountChip": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "pendingRequestsLabel": "Ausstehende Anfragen",
+  "youWereAsked": "Du wurdest angefragt:",
+  "subForPlayer": "Ersatz f\u00fcr {name}",
+  "@subForPlayer": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "canYouStepIn": "Kannst du einspringen?",
+  "timeExpired": "Zeit abgelaufen",
+  "acceptTooltip": "Annehmen",
+  "declineTooltip": "Ablehnen",
+  "requestHistory": "Anfragen-Verlauf:",
+  "subForPlayerHistory": "{subName} f\u00fcr {originalName}",
+  "@subForPlayerHistory": {
+    "placeholders": {
+      "subName": { "type": "String" },
+      "originalName": { "type": "String" }
+    }
+  },
+  "chipWaiting": "Wartet auf Antwort",
+  "chipAccepted": "Angenommen",
+  "chipDeclined": "Abgelehnt",
+  "subButton": "Ersatz",
+
+  "sectionRides": "Fahrten",
+  "carpoolsTitle": "Fahrgemeinschaften",
+  "iDriveButton": "Ich fahre",
+  "noCarpoolsYet": "Noch keine Fahrgemeinschaften vorhanden.",
+  "noCarpoolsHint": "Noch keine Fahrgemeinschaften. Biete eine Mitfahrgelegenheit an.",
+  "youSuffix": "(du)",
+  "joinRideButton": "Mitfahren",
+  "leaveRideButton": "Aussteigen",
+  "joinedRideToast": "Du f\u00e4hrst mit",
+  "joinRideError": "Mitfahren konnte nicht gespeichert werden.",
+  "leftRideToast": "Ausgestiegen",
+  "leaveRideError": "Aussteigen konnte nicht gespeichert werden.",
+  "deleteCarpoolTitle": "Fahrgemeinschaft l\u00f6schen?",
+  "deleteCarpoolBody": "Alle Mitfahrer werden entfernt.",
+  "editCarpoolTitle": "Fahrgemeinschaft bearbeiten",
+  "seatsQuestion": "Wie viele Pl\u00e4tze bietest du an?",
+  "departureLocationLabel": "Abfahrtsort",
+  "departureLocationHint": "z.B. Bahnhof Bern",
+  "departureTimeWithValue": "Abfahrt: {time}",
+  "@departureTimeWithValue": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "departureTimeOptional": "Abfahrtszeit (optional)",
+  "changeTooltip": "\u00c4ndern",
+  "setTooltip": "Setzen",
+  "removeTooltipLabel": "Entfernen",
+  "carpoolNoteHint": "z.B. Treffpunkt Parkplatz",
+  "carpoolSavedToast": "Fahrgemeinschaft gespeichert",
+  "carpoolCreatedReloadToast": "Fahrgemeinschaft erstellt. Bitte lade die Seite neu.",
+  "departAtFormat": "{date} um {time}",
+  "@departAtFormat": {
+    "placeholders": {
+      "date": { "type": "String" },
+      "time": { "type": "String" }
+    }
+  },
+
+  "sectionDinner": "Essen",
+  "answeredOfTotal": "{answered} von {total}",
+  "@answeredOfTotal": {
+    "placeholders": {
+      "answered": { "type": "String" },
+      "total": { "type": "String" }
+    }
+  },
+  "yourRsvp": "Deine Zusage",
+  "dinnerYes": "Ja",
+  "dinnerNo": "Nein",
+  "dinnerMaybe": "Unsicher",
+  "dinnerNoteHint": "Notiz (z.B. \u201ekomme sp\u00e4ter\u201c)",
+  "dinnerSaveError": "Speichern nicht m\u00f6glich. Bitte versuche es erneut.",
+  "participantsTitle": "Teilnehmer",
+
+  "sectionExpenses": "Spesen",
+  "expenseTotal": "Total",
+  "perPersonLabel": "Pro Kopf ({count} Pers.)",
+  "@perPersonLabel": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "paidLabel": "Bezahlt",
+  "firstConfirmDinner": "Zuerst unter \u201eEssen\u201c zusagen, bevor Spesen erfasst werden k\u00f6nnen.",
+  "addExpenseButton": "Ausgabe hinzuf\u00fcgen",
+  "noExpensesYet": "Noch keine Spesen erfasst. Lege eine neue Ausgabe an.",
+  "noExpensesPossible": "Noch keine Spesen m\u00f6glich. Zuerst unter \u201eEssen\u201c zusagen.",
+  "paidByLabel": "Bezahlt von {name}",
+  "@paidByLabel": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "perPersonAmountLabel": "{amount}/Pers.",
+  "@perPersonAmountLabel": {
+    "placeholders": {
+      "amount": { "type": "String" }
+    }
+  },
+  "paidOfShareCount": "{paid}/{total} bezahlt",
+  "@paidOfShareCount": {
+    "placeholders": {
+      "paid": { "type": "String" },
+      "total": { "type": "String" }
+    }
+  },
+  "sharePaid": "Bezahlt",
+  "shareOpen": "Offen",
+  "deleteExpenseTooltip": "Ausgabe l\u00f6schen",
+  "markedAsPaid": "Als bezahlt markiert",
+  "markedAsOpen": "Als offen markiert",
+  "expenseTitleField": "Titel *",
+  "expenseTitleHint": "z.B. Pizza, Getr\u00e4nke",
+  "expenseAmountField": "Betrag (CHF) *",
+  "expenseAmountHint": "z.B. 45.50",
+  "currencyPrefix": "CHF ",
+  "expenseNoteHint": "z.B. Restaurant Adler",
+  "expenseDistribution": "Wird gleichm\u00e4ssig auf alle {count} Dinner-Teilnehmer (Ja) verteilt.",
+  "@expenseDistribution": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "enterTitleValidation": "Bitte gib einen Titel ein.",
+  "enterAmountValidation": "Bitte gib einen g\u00fcltigen Betrag ein.",
+  "expenseCreatedToast": "Ausgabe \u201e{title}\u201c (CHF {amount}) erstellt",
+  "@expenseCreatedToast": {
+    "placeholders": {
+      "title": { "type": "String" },
+      "amount": { "type": "String" }
+    }
+  },
+  "deleteExpenseTitle": "Ausgabe l\u00f6schen?",
+  "deleteExpenseBody": "\u201e{title}\u201c ({amount}) und alle Anteile werden gel\u00f6scht.",
+  "@deleteExpenseBody": {
+    "placeholders": {
+      "title": { "type": "String" },
+      "amount": { "type": "String" }
+    }
+  },
+  "expenseDeletedToast": "Ausgabe \u201e{title}\u201c gel\u00f6scht",
+  "@expenseDeletedToast": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+
+  "roleCaptainSuffix": " (Captain)",
+  "unknownPlayer": "Unbekannt",
+
+  "lineupReorderHint": "Halte \u2630 und ziehe um Positionen zu tauschen",
+
+  "claimConfirmTitle": "Spieler best\u00e4tigen",
+  "claimConfirmCta": "Ja, das bin ich",
+  "claimConfirmBody": "Bist du \u201e{label}\u201c?",
+  "@claimConfirmBody": {
+    "placeholders": {
+      "label": { "type": "String" }
+    }
+  },
+  "claimWelcomeToast": "Willkommen, {name}!",
+  "@claimWelcomeToast": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "claimWhoAreYou": "Wer bist du?",
+  "commonSkip": "\u00dcberspringen",
+  "claimPickName": "W\u00e4hle deinen Namen aus der Liste,\ndamit das Team dich zuordnen kann.",
+  "claimSearchHint": "Name suchen\u2026",
+  "claimNoSlotTitle": "Kein freier Platz",
+  "claimNoSlotBody": "Dein Captain hat noch keine Spieler angelegt\noder alle Pl\u00e4tze sind bereits vergeben.",
+
+  "notifLoadError": "Benachrichtigungen konnten nicht geladen werden.",
+  "matchLoadError": "Spiel konnte nicht geladen werden.",
+  "notifTitleWithCount": "Benachrichtigungen ({count})",
+  "@notifTitleWithCount": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "markAllRead": "Alle gelesen",
+  "allReadTitle": "Alles gelesen",
+  "allReadSubtitle": "Neue Benachrichtigungen erscheinen automatisch hier.",
+
+  "timeJustNow": "gerade eben",
+  "timeMinutesAgo": "vor {minutes} Min.",
+  "@timeMinutesAgo": {
+    "placeholders": {
+      "minutes": { "type": "String" }
+    }
+  },
+  "timeHoursAgo": "vor {hours} Std.",
+  "@timeHoursAgo": {
+    "placeholders": {
+      "hours": { "type": "String" }
+    }
+  },
+  "timeDaysAgo": "vor {days} Tagen",
+  "@timeDaysAgo": {
+    "placeholders": {
+      "days": { "type": "String" }
+    }
+  },
+
+  "forgotPasswordAppBar": "Passwort vergessen",
+  "resetPasswordTitle": "Passwort zur\u00fccksetzen",
+  "resetPasswordInstructions": "Gib deine E-Mail-Adresse ein und wir senden dir einen Link zum Zur\u00fccksetzen.",
+  "emailSentTitle": "E-Mail gesendet!",
+  "resetPasswordSentBody": "Pr\u00fcfe dein Postfach und klicke auf den Link, um ein neues Passwort zu setzen.",
+  "backToSignIn": "Zur\u00fcck zur Anmeldung",
+  "sendLinkButton": "Link senden",
+  "emailSendError": "E-Mail konnte nicht gesendet werden.",
+
+  "sportSelectionTitle": "Sportart w\u00e4hlen",
+  "sportSelectionSubtitle": "Welche Sportart spielt dein Team?",
+
+  "eventsLoadError": "Events konnten nicht geladen werden.",
+  "matchUnavailableDeleted": "Match nicht verf\u00fcgbar (gel\u00f6scht oder archiviert).",
+  "matchUnavailable": "Match nicht verf\u00fcgbar.",
+  "noNewEvents": "Keine neuen Events",
+  "noNewEventsSubtitle": "Sobald es Neuigkeiten gibt, siehst du sie hier.",
+  "teamFilterLabel": "Team-Filter",
+  "allTeams": "Alle Teams",
+
+  "createTeamTitle": "Team erstellen",
+  "teamNameLabel": "Club Name / Team Name *",
+  "teamNameHint": "z.B. TC Winterthur 1",
+  "leagueLabel": "Liga (optional)",
+  "leagueHint": "z.B. 3. Liga Herren",
+  "seasonYearLabel": "Saison Jahr",
+  "captainNameRequired": "Dein Name im Team *",
+  "captainNamePrompt": "Dein Name, damit dein Team dich erkennt.",
+  "createTeamPlaysSelfSubtitle": "Aktiviere dies, wenn du als Captain auch spielst.",
+  "createButton": "Erstellen",
+  "teamCreatedToast": "Team erstellt",
+  "teamCreateError": "Team konnte nicht erstellt werden. Bitte versuche es erneut.",
+  "enterTeamName": "Bitte Team Name eingeben.",
+  "enterCaptainName": "Bitte deinen Namen eingeben (min. 2 Zeichen).",
+  "invalidSeasonYear": "Bitte g\u00fcltiges Saison-Jahr eingeben.",
+  "selectRankingError": "Bitte Ranking ausw\u00e4hlen.",
+
+  "countryLabel": "Land *",
+  "rankingLabelRequired": "Ranking *",
+  "rankingAvailableSection": "Verf\u00fcgbar",
+  "dropdownHint": "Bitte ausw\u00e4hlen",
+
+  "notifTitleLineup": "Aufstellung",
+  "notifTitleSubRequest": "Ersatzanfrage",
+  "notifTitlePromotion": "Nachr\u00fccker",
+  "notifTitleAutoPromotion": "Auto-Nachr\u00fccken",
+  "notifTitleLineupGenerated": "Aufstellung erstellt",
+  "notifTitleConfirmation": "Best\u00e4tigung",
+  "notifTitleWarning": "Achtung",
+  "notifTitlePromoted": "Bef\u00f6rderung",
+
+  "notifBodyLineupOnline": "Die Aufstellung ist online. Schau sie dir an!",
+  "notifBodySelectedAs": "Du wurdest als {role} (Pos. {position}) aufgestellt",
+  "@notifBodySelectedAs": {
+    "placeholders": {
+      "role": { "type": "String" },
+      "position": { "type": "String" }
+    }
+  },
+  "notifBodyReserveConfirm": "Du bist Ersatz {position}. Bitte best\u00e4tige.",
+  "@notifBodyReserveConfirm": {
+    "placeholders": {
+      "position": { "type": "String" }
+    }
+  },
+  "notifBodyPromotedToStarter": "Du wurdest zum Starter (Pos. {position}) bef\u00f6rdert \ud83c\udf89",
+  "@notifBodyPromotedToStarter": {
+    "placeholders": {
+      "position": { "type": "String" }
+    }
+  },
+  "notifBodyAutoPromoted": "Du bist als Ersatz nachger\u00fcckt und spielst nun mit \ud83c\udf89",
+  "notifBodyAutoPromotionCaptain": "Auto-Nachr\u00fccken: {inName} ersetzt {outName}",
+  "@notifBodyAutoPromotionCaptain": {
+    "placeholders": {
+      "inName": { "type": "String" },
+      "outName": { "type": "String" }
+    }
+  },
+  "notifBodyNoReserve": "{absent} hat abgesagt \u2013 kein Ersatz verf\u00fcgbar!",
+  "@notifBodyNoReserve": {
+    "placeholders": {
+      "absent": { "type": "String" }
+    }
+  },
+  "notifBodyLineupCreated": "Aufstellung erstellt: {starters} Starter, {reserves} Ersatz",
+  "@notifBodyLineupCreated": {
+    "placeholders": {
+      "starters": { "type": "String" },
+      "reserves": { "type": "String" }
+    }
+  },
+  "notifBodyPlayerConfirmed": "Ein Spieler hat best\u00e4tigt",
+  "notifBodyNoReservesLeft": "Keine Ersatzspieler mehr verf\u00fcgbar!",
+  "notifBodyPromotedToPos": "Du wurdest zum Starter bef\u00f6rdert (Pos. {position}) \ud83c\udf89",
+  "@notifBodyPromotedToPos": {
+    "placeholders": {
+      "position": { "type": "String" }
+    }
+  },
+  "notifBodyRosterChanged": "Die Aufstellung wurde ge\u00e4ndert",
+  "notifBodyNeedsResponse": "Bitte best\u00e4tige deine Aufstellung",
+  "eventBodyReplaced": "{inName} ersetzt {outName}",
+  "@eventBodyReplaced": {
+    "placeholders": {
+      "inName": { "type": "String" },
+      "outName": { "type": "String" }
+    }
+  }
+}

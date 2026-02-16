@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../l10n/app_localizations.dart';
 
 /// Service for the cs_events + cs_event_reads event system.
 ///
@@ -158,7 +159,7 @@ class EventService {
 
   /// Human-readable title.
   /// Priority: payload-specific title → DB title column → type-based fallback.
-  static String formatTitle(Map<String, dynamic> event) {
+  static String formatTitle(Map<String, dynamic> event, [AppLocalizations? l]) {
     final payload = event['payload'] is Map<String, dynamic>
         ? event['payload'] as Map<String, dynamic>
         : <String, dynamic>{};
@@ -174,19 +175,19 @@ class EventService {
     // 3) Type-based fallback
     switch (event['event_type'] as String? ?? '') {
       case 'lineup_published':
-        return 'Aufstellung veröffentlicht';
+        return l?.lineupPublished ?? 'Aufstellung veröffentlicht';
       case 'replacement_promoted':
-        return 'Ersatz nachgerückt';
+        return l?.replacementPromoted ?? 'Ersatz nachgerückt';
       case 'no_reserve_available':
-        return 'Kein Ersatz verfügbar';
+        return l?.noReserveAvailable ?? 'Kein Ersatz verfügbar';
       default:
-        return 'CourtSwiss';
+        return 'Lineup';
     }
   }
 
   /// Human-readable body.
   /// Priority: payload-constructed body → DB body column → type-based fallback.
-  static String formatBody(Map<String, dynamic> event) {
+  static String formatBody(Map<String, dynamic> event, [AppLocalizations? l]) {
     final payload = event['payload'] is Map<String, dynamic>
         ? event['payload'] as Map<String, dynamic>
         : <String, dynamic>{};
@@ -202,13 +203,15 @@ class EventService {
         final inName = payload['in_name'] ?? payload['promoted_name'];
         final outName = payload['out_name'] ?? payload['absent_name'];
         if (inName != null && outName != null) {
-          return '$inName ersetzt $outName';
+          return l?.eventBodyReplaced('$inName', '$outName')
+              ?? '$inName ersetzt $outName';
         }
         break;
       case 'no_reserve_available':
         final absent = payload['out_name'] ?? payload['absent_name'];
         if (absent != null) {
-          return '$absent hat abgesagt – kein Ersatz verfügbar!';
+          return l?.notifBodyNoReserve('$absent')
+              ?? '$absent hat abgesagt – kein Ersatz verfügbar!';
         }
         break;
     }
@@ -220,14 +223,17 @@ class EventService {
     // 3) Fallback
     switch (eventType) {
       case 'lineup_published':
-        return 'Die Aufstellung ist online. Schau sie dir an!';
+        return l?.notifBodyLineupOnline
+            ?? 'Die Aufstellung ist online. Schau sie dir an!';
       case 'replacement_promoted':
         final to = payload['promoted_name'] ?? payload['in_name'] ?? '?';
         final from = payload['absent_name'] ?? payload['out_name'] ?? '?';
-        return '$to ersetzt $from';
+        return l?.eventBodyReplaced('$to', '$from')
+            ?? '$to ersetzt $from';
       case 'no_reserve_available':
         final absent = payload['absent_name'] ?? payload['out_name'] ?? '?';
-        return '$absent hat abgesagt – kein Ersatz verfügbar!';
+        return l?.notifBodyNoReserve('$absent')
+            ?? '$absent hat abgesagt – kein Ersatz verfügbar!';
       default:
         return eventType;
     }

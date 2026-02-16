@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../l10n/app_localizations.dart';
 import '../services/event_service.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/ui/ui.dart';
@@ -64,7 +65,7 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      CsToast.error(context, 'Events konnten nicht geladen werden.');
+      CsToast.error(context, AppLocalizations.of(context)!.eventsLoadError);
     }
   }
 
@@ -116,7 +117,7 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
         if (!mounted) return;
 
         if (match == null) {
-          CsToast.info(context, 'Match nicht verfügbar (gelöscht oder archiviert).');
+          CsToast.info(context, AppLocalizations.of(context)!.matchUnavailableDeleted);
         } else {
           await Navigator.push(
             context,
@@ -131,7 +132,7 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
         }
       } catch (e) {
         if (!mounted) return;
-        CsToast.error(context, 'Match nicht verfügbar.');
+        CsToast.error(context, AppLocalizations.of(context)!.matchUnavailable);
         debugPrint('EventInbox: match load failed: $e');
       }
     }
@@ -146,34 +147,35 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
       _load();
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Events konnten nicht geladen werden.');
+      CsToast.error(context, AppLocalizations.of(context)!.eventsLoadError);
     }
   }
 
-  String _timeAgo(String? isoDate) {
+  String _timeAgo(String? isoDate, AppLocalizations l) {
     if (isoDate == null) return '';
     final dt = DateTime.tryParse(isoDate)?.toLocal();
     if (dt == null) return '';
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'gerade eben';
-    if (diff.inMinutes < 60) return 'vor ${diff.inMinutes} Min.';
-    if (diff.inHours < 24) return 'vor ${diff.inHours} Std.';
-    if (diff.inDays < 7) return 'vor ${diff.inDays} Tagen';
+    if (diff.inMinutes < 1) return l.timeJustNow;
+    if (diff.inMinutes < 60) return l.timeMinutesAgo('${diff.inMinutes}');
+    if (diff.inHours < 24) return l.timeHoursAgo('${diff.inHours}');
+    if (diff.inDays < 7) return l.timeDaysAgo('${diff.inDays}');
     return '${dt.day}.${dt.month}.${dt.year}';
   }
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final unreadCount = _events.where(EventService.isUnread).length;
 
     return CsScaffoldList(
       appBar: CsGlassAppBar(
-        title: 'Benachrichtigungen ($unreadCount)',
+        title: l.notifTitleWithCount('$unreadCount'),
         actions: [
           if (unreadCount > 0)
             TextButton(
               onPressed: _markAllRead,
-              child: const Text('Alle gelesen'),
+              child: Text(l.markAllRead),
             ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
@@ -187,17 +189,17 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
               child: DropdownButtonFormField<String?>(
                 initialValue: _selectedTeamId,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Team-Filter',
+                decoration: InputDecoration(
+                  labelText: l.teamFilterLabel,
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
                   ),
                 ),
                 items: [
-                  const DropdownMenuItem<String?>(
+                  DropdownMenuItem<String?>(
                     value: null,
-                    child: Text('Alle Teams'),
+                    child: Text(l.allTeams),
                   ),
                   ..._teamOptions.map(
                     (t) => DropdownMenuItem<String?>(
@@ -226,8 +228,8 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
                 ? Center(
                     child: CsEmptyState(
                       icon: Icons.notifications_none,
-                      title: 'Keine neuen Events',
-                      subtitle: 'Sobald es Neuigkeiten gibt, siehst du sie hier.',
+                      title: l.noNewEvents,
+                      subtitle: l.noNewEventsSubtitle,
                     ),
                   )
                 : RefreshIndicator(
@@ -239,8 +241,8 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
                         final ev = _events[i];
                         final isUnread = EventService.isUnread(ev);
                         final eventType = ev['event_type'] as String? ?? '';
-                        final title = EventService.formatTitle(ev);
-                        final body = EventService.formatBody(ev);
+                        final title = EventService.formatTitle(ev, l);
+                        final body = EventService.formatBody(ev, l);
                         final hasMatch = EventService.getMatchId(ev) != null;
 
                         return CsAnimatedEntrance.staggered(
@@ -300,6 +302,7 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
                                       Text(
                                         _timeAgo(
                                           ev['created_at'] as String?,
+                                          l,
                                         ),
                                         style: CsTextStyles.onDarkTertiary
                                             .copyWith(fontSize: 11),

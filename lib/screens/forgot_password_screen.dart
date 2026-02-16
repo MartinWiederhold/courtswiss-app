@@ -5,6 +5,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/ui/ui.dart';
 
@@ -31,7 +32,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final valid = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
 
     if (email.isEmpty || !valid) {
-      CsToast.info(context, 'Bitte eine gültige E-Mail eingeben.');
+      CsToast.info(context, AppLocalizations.of(context)!.invalidEmail);
       return;
     }
 
@@ -45,7 +46,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       setState(() => _sent = true);
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'E-Mail konnte nicht gesendet werden.');
+      CsToast.error(context, AppLocalizations.of(context)!.emailSendError);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -53,9 +54,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: CsColors.white,
-      appBar: const CsGlassAppBar(title: 'Passwort vergessen'),
+      appBar: CsGlassAppBar(title: l.forgotPasswordAppBar),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -66,6 +68,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Widget _buildForm() {
+    final l = AppLocalizations.of(context)!;
     return Column(
       children: [
         const Spacer(flex: 2),
@@ -84,7 +87,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 20),
         Text(
-          'Passwort zurücksetzen',
+          l.resetPasswordTitle,
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w700,
@@ -94,7 +97,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Gib deine E-Mail-Adresse ein und wir senden dir einen Link zum Zurücksetzen.',
+          l.resetPasswordInstructions,
           style: TextStyle(fontSize: 14, color: CsColors.gray600),
           textAlign: TextAlign.center,
         ),
@@ -107,7 +110,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           autofillHints: const [AutofillHints.email],
           style: TextStyle(fontSize: 15, color: CsColors.gray900),
           decoration: InputDecoration(
-            labelText: 'E-Mail',
+            labelText: l.email,
             hintText: 'name@domain.ch',
             labelStyle: TextStyle(color: CsColors.gray500, fontSize: 14),
             hintStyle: TextStyle(color: CsColors.gray400, fontSize: 14),
@@ -133,7 +136,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 20),
         CsPrimaryButton(
-          label: 'Link senden',
+          label: l.sendLinkButton,
           loading: _loading,
           onPressed: _loading ? null : _sendReset,
           icon: const Icon(Icons.send_rounded, size: 18),
@@ -144,6 +147,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Widget _buildSentState() {
+    final l = AppLocalizations.of(context)!;
     return Column(
       children: [
         const Spacer(flex: 2),
@@ -162,7 +166,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 24),
         Text(
-          'E-Mail gesendet!',
+          l.emailSentTitle,
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w700,
@@ -172,13 +176,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          'Prüfe dein Postfach und klicke auf den Link, um ein neues Passwort zu setzen.',
+          l.resetPasswordSentBody,
           style: TextStyle(fontSize: 14, color: CsColors.gray600),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 32),
         CsSecondaryButton(
-          label: 'Zurück zur Anmeldung',
+          label: l.backToSignIn,
           onPressed: () => Navigator.pop(context),
           icon: const Icon(Icons.arrow_back_rounded, size: 18),
         ),

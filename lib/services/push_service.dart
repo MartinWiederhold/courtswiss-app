@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,7 +12,8 @@ import 'local_notification_service.dart';
 /// Must be a top-level function (not a class method).
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Minimal: just log. Heavy work (navigation) is not possible here.
+  // Ensure Firebase is initialised in the background isolate.
+  await Firebase.initializeApp();
   debugPrint(
     'PushService [background] ${message.messageId} '
     'data=${message.data}',
@@ -69,21 +71,63 @@ class PushService {
         sound: true,
         provisional: false,
       );
-      debugPrint(
-        'PushService permission: ${settings.authorizationStatus.name}',
+      // ignore: avoid_print
+      print(
+        'PUSH_PERMISSION: ${settings.authorizationStatus.name}',
       );
     } catch (e) {
       debugPrint('PushService requestPermission error: $e');
     }
 
+    // ── 1b. iOS foreground presentation (show banner even when app is open)
+    if (Platform.isIOS) {
+      try {
+        await messaging.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        debugPrint('PushService: iOS foreground presentation options set');
+      } catch (e) {
+        debugPrint('PushService setForegroundPresentation error: $e');
+      }
+    }
+
+    // ── 1c. iOS: verify APNs token (diagnostic) ──────────────────
+    if (Platform.isIOS) {
+      try {
+        final apns = await messaging.getAPNSToken();
+        // ignore: avoid_print
+        print('APNS_TOKEN: ${apns ?? "NULL – APNs not registered!"}');
+        if (apns == null) {
+          // ignore: avoid_print
+          print(
+            'PUSH_DIAG: APNs token is null. Check:\n'
+            '  1) Runner.entitlements has aps-environment\n'
+            '  2) Push Notifications capability in Xcode\n'
+            '  3) App is signed with push-enabled provisioning profile\n'
+            '  4) Testing on a REAL device (not simulator)',
+          );
+        }
+      } catch (e) {
+        debugPrint('PushService getAPNSToken error: $e');
+      }
+    }
+
     // ── 2. Get current FCM token and register it ─────────────────
     try {
       final token = await messaging.getToken();
+      // ignore: avoid_print
+      print('FCM_TOKEN: ${token ?? "NULL"}');
       if (token != null && token.isNotEmpty) {
         lastToken = token;
-        // ignore: avoid_print
-        print('FCM_TOKEN: $token');
         await _registerTokenForCurrentUser(token);
+      } else {
+        // ignore: avoid_print
+        print(
+          'PUSH_DIAG: FCM token is null. On iOS this usually means '
+          'APNs token was not obtained. See APNS_TOKEN log above.',
+        );
       }
     } catch (e) {
       debugPrint('PushService getToken error: $e');
@@ -217,7 +261,7 @@ class PushService {
     final notification = message.notification;
     if (notification != null) {
       LocalNotificationService.show(
-        title: notification.title ?? 'CourtSwiss',
+        title: notification.title ?? 'Lineup',
         body: notification.body ?? '',
         payload: message.data['match_id'] as String?,
       );

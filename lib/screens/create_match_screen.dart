@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../services/match_service.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/ui/ui.dart';
@@ -76,9 +77,11 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
   }
 
   Future<void> _save() async {
+    final l = AppLocalizations.of(context)!;
+
     if (!_formKey.currentState!.validate()) return;
     if (_matchDate == null || _matchTime == null) {
-      CsToast.info(context, 'Bitte Datum und Uhrzeit wählen');
+      CsToast.info(context, l.chooseDateAndTime);
       return;
     }
 
@@ -116,11 +119,11 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
         );
       }
       if (!mounted) return;
-      CsToast.success(context, widget.isEditing ? 'Spiel aktualisiert' : 'Spiel erstellt');
+      CsToast.success(context, widget.isEditing ? l.matchUpdated : l.matchCreated);
       Navigator.pop(context, true); // true = changed
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Spiel konnte nicht erstellt werden. Bitte versuche es erneut.');
+      CsToast.error(context, l.matchCreateError);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -128,19 +131,21 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+
     final dateText = _matchDate != null
         ? '${_matchDate!.day.toString().padLeft(2, '0')}.'
               '${_matchDate!.month.toString().padLeft(2, '0')}.'
               '${_matchDate!.year}'
-        : 'Datum wählen';
+        : l.chooseDate;
     final timeText = _matchTime != null
         ? '${_matchTime!.hour.toString().padLeft(2, '0')}:'
               '${_matchTime!.minute.toString().padLeft(2, '0')}'
-        : 'Uhrzeit wählen';
+        : l.chooseTime;
 
     return CsScaffoldList(
       appBar: CsGlassAppBar(
-        title: widget.isEditing ? 'Spiel bearbeiten' : 'Spiel hinzufügen',
+        title: widget.isEditing ? l.editMatch : l.addMatch,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
@@ -166,9 +171,9 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
                             size: 20,
                           ),
                           const SizedBox(width: 10),
-                          const Text(
-                            'Spieldetails',
-                            style: TextStyle(
+                          Text(
+                            l.matchDetails,
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                               color: CsColors.gray900,
@@ -179,13 +184,13 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _opponentCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Gegner *',
-                          hintText: 'z.B. TC Zürich',
+                        decoration: InputDecoration(
+                          labelText: l.opponent,
+                          hintText: l.opponentHint,
                         ),
                         style: const TextStyle(color: CsColors.gray900),
                         validator: (v) => (v == null || v.trim().isEmpty)
-                            ? 'Bitte ausfüllen'
+                            ? l.pleaseComplete
                             : null,
                       ),
                     ],
@@ -203,9 +208,9 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Datum & Zeit',
-                        style: TextStyle(
+                      Text(
+                        l.dateAndTime,
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: CsColors.gray900,
@@ -254,7 +259,7 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              _isHome ? 'Heimspiel' : 'Auswärtsspiel',
+                              _isHome ? l.homeGame : l.awayGame,
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
@@ -283,9 +288,9 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Details',
-                        style: TextStyle(
+                      Text(
+                        l.details,
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: CsColors.gray900,
@@ -294,18 +299,18 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _locationCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Ort',
-                          hintText: 'z.B. Tennisclub Bern, Platz 3',
+                        decoration: InputDecoration(
+                          labelText: l.location,
+                          hintText: l.locationHint,
                         ),
                         style: const TextStyle(color: CsColors.gray900),
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _noteCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Notiz (optional)',
-                          hintText: 'z.B. Treffpunkt 09:30',
+                        decoration: InputDecoration(
+                          labelText: l.noteOptional,
+                          hintText: l.noteHint,
                         ),
                         style: const TextStyle(color: CsColors.gray900),
                         maxLines: 2,
@@ -332,8 +337,8 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
                     size: 18,
                   ),
                   label: widget.isEditing
-                      ? 'Änderungen speichern'
-                      : 'Spiel erstellen',
+                      ? l.saveChanges
+                      : l.createMatch,
                 ),
               ),
             ],

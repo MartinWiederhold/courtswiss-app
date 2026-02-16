@@ -27,17 +27,17 @@ class InviteService {
 
   /// Build the invite deep link (custom scheme)
   static String buildDeepLink(String token) {
-    return 'courtswiss://join?token=$token';
+    return 'lineup://join?token=$token';
   }
 
   /// Build the universal link placeholder
   static String buildUniversalLink(String token) {
-    return 'https://courtswiss.app/join?token=$token';
+    return 'https://lineup.app/join?token=$token';
   }
 
   /// Build the share text
   static String buildShareText(String token, String teamName) {
     final link = buildDeepLink(token);
-    return 'Tritt meinem Interclub-Team "$teamName" bei CourtSwiss bei:\n$link';
+    return 'Tritt meinem Interclub-Team "$teamName" bei Lineup bei:\n$link';
   }
 }

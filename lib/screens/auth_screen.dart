@@ -9,13 +9,21 @@
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/ui/ui.dart';
 import 'email_verification_pending_screen.dart';
 import 'forgot_password_screen.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  /// When `true`, an AppBar with a close/back button is shown so the
+  /// user can return to the previous screen.  Use this when the screen
+  /// is pushed from an in-app CTA (e.g. "Konto erforderlich" sheet).
+  /// When `false` (default), the screen acts as the root auth gate
+  /// screen — no back/close affordance.
+  final bool showClose;
+
+  const AuthScreen({super.key, this.showClose = false});
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -63,8 +71,9 @@ class _AuthScreenState extends State<AuthScreen>
   static final _emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
   String? _validatePassword(String pw) {
-    if (pw.length < 8) return 'Mindestens 8 Zeichen';
-    if (!RegExp(r'[0-9]').hasMatch(pw)) return 'Mind. 1 Zahl erforderlich';
+    final l = AppLocalizations.of(context)!;
+    if (pw.length < 8) return l.passwordMinLength;
+    if (!RegExp(r'[0-9]').hasMatch(pw)) return l.passwordNeedsNumber;
     return null;
   }
 
@@ -73,15 +82,16 @@ class _AuthScreenState extends State<AuthScreen>
   // ══════════════════════════════════════════════════════════
 
   Future<void> _login() async {
+    final l = AppLocalizations.of(context)!;
     final email = _loginEmailCtrl.text.trim().toLowerCase();
     final password = _loginPasswordCtrl.text;
 
     if (email.isEmpty || !_emailRegex.hasMatch(email)) {
-      CsToast.info(context, 'Bitte eine gültige E-Mail eingeben.');
+      CsToast.info(context, l.invalidEmail);
       return;
     }
     if (password.isEmpty) {
-      CsToast.info(context, 'Bitte Passwort eingeben.');
+      CsToast.info(context, l.enterPassword);
       return;
     }
 
@@ -91,6 +101,14 @@ class _AuthScreenState extends State<AuthScreen>
         email: email,
         password: password,
       );
+      // If pushed from in-app CTA, pop back so the user lands on the
+      // previous screen.  AuthGate underneath will have already reacted
+      // to the new session.
+      if (!mounted) return;
+      if (widget.showClose && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+        return;
+      }
       // AuthGate will automatically react to the new session
     } on AuthException catch (e) {
       if (!mounted) return;
@@ -98,7 +116,7 @@ class _AuthScreenState extends State<AuthScreen>
       CsToast.error(context, msg);
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Anmeldung fehlgeschlagen. Bitte versuche es erneut.');
+      CsToast.error(context, l.loginFailed);
     } finally {
       if (mounted) setState(() => _loginLoading = false);
     }
@@ -117,12 +135,13 @@ class _AuthScreenState extends State<AuthScreen>
   }
 
   Future<void> _register() async {
+    final l = AppLocalizations.of(context)!;
     final email = _regEmailCtrl.text.trim().toLowerCase();
     final password = _regPasswordCtrl.text;
     final confirm = _regConfirmCtrl.text;
 
     if (email.isEmpty || !_emailRegex.hasMatch(email)) {
-      CsToast.info(context, 'Bitte eine gültige E-Mail eingeben.');
+      CsToast.info(context, l.invalidEmail);
       return;
     }
     final pwError = _validatePassword(password);
@@ -131,12 +150,14 @@ class _AuthScreenState extends State<AuthScreen>
       return;
     }
     if (password != confirm) {
-      CsToast.info(context, 'Passwörter stimmen nicht überein.');
+      CsToast.info(context, l.passwordsMismatch);
       return;
     }
 
     setState(() => _regLoading = true);
     try {
+      bool navigateToPending = false;
+
       if (_isCurrentSessionAnon) {
         // ── Anon upgrade path ─────────────────────────────────
         // Upgrade the anonymous user in-place so the user_id stays
@@ -152,17 +173,8 @@ class _AuthScreenState extends State<AuthScreen>
         // After updateUser with a new email Supabase sends a
         // confirmation link. The user object will have
         // emailConfirmedAt == null until the link is clicked.
-        final needsConfirmation =
+        navigateToPending =
             res.user != null && res.user!.emailConfirmedAt == null;
-
-        if (needsConfirmation) {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => EmailVerificationPendingScreen(email: email),
-            ),
-          );
-        }
-        // else: if auto-confirmed, AuthGate will react
       } else {
         // ── Fresh sign-up path ────────────────────────────────
         final res = await Supabase.instance.client.auth.signUp(
@@ -173,48 +185,67 @@ class _AuthScreenState extends State<AuthScreen>
 
         if (!mounted) return;
 
-        final needsConfirmation =
-            res.user != null && res.user!.emailConfirmedAt == null;
-
-        if (needsConfirmation) {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => EmailVerificationPendingScreen(email: email),
-            ),
-          );
-        }
-        // else: if auto-confirmed, AuthGate will react
+        // Always navigate to pending screen when no session is returned.
+        // This covers both new accounts (confirmation needed) and
+        // existing accounts (Supabase doesn't send email but we show
+        // the same UX to prevent email enumeration).
+        navigateToPending = res.session == null;
       }
+
+      if (navigateToPending) {
+        // Reset loading before navigating to the pending screen
+        setState(() => _regLoading = false);
+
+        final returnedEmail = await Navigator.of(context).push<String>(
+          MaterialPageRoute(
+            builder: (_) => EmailVerificationPendingScreen(email: email),
+          ),
+        );
+
+        // If user tapped "Already have an account? Log in",
+        // switch to login tab with the email pre-filled.
+        if (returnedEmail != null && mounted) {
+          _loginEmailCtrl.text = returnedEmail;
+          _tabCtrl.animateTo(0);
+          setState(() {});
+        }
+      } else if (widget.showClose && Navigator.canPop(context)) {
+        // Auto-confirmed → pop back to previous screen.
+        Navigator.of(context).pop();
+        return;
+      }
+      // else: auto-confirmed → AuthGate reacts to new session
     } on AuthException catch (e) {
       if (!mounted) return;
       final msg = _mapAuthError(e);
       CsToast.error(context, msg);
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Registrierung fehlgeschlagen. Bitte versuche es erneut.');
+      CsToast.error(context, l.registerFailed);
     } finally {
       if (mounted) setState(() => _regLoading = false);
     }
   }
 
   String _mapAuthError(AuthException e) {
+    final l = AppLocalizations.of(context)!;
     final code = e.statusCode;
     final msg = e.message.toLowerCase();
     if (msg.contains('invalid login credentials') ||
         msg.contains('invalid_credentials')) {
-      return 'E-Mail oder Passwort ungültig.';
+      return l.invalidCredentials;
     }
     if (msg.contains('email not confirmed')) {
-      return 'E-Mail noch nicht bestätigt. Bitte prüfe dein Postfach.';
+      return l.emailNotConfirmed;
     }
     if (msg.contains('already registered') ||
         msg.contains('user already registered')) {
-      return 'Diese E-Mail ist bereits registriert. Bitte melde dich an.';
+      return l.emailAlreadyRegistered;
     }
     if (code == '429' || msg.contains('rate limit')) {
-      return 'Zu viele Versuche. Bitte warte kurz.';
+      return l.rateLimited;
     }
-    return 'Fehler: ${e.message}';
+    return l.errorPrefix(e.message);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -268,14 +299,31 @@ class _AuthScreenState extends State<AuthScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+
     return Scaffold(
       backgroundColor: CsColors.white,
+      // Show AppBar with close button when pushed from in-app CTA.
+      appBar: widget.showClose
+          ? AppBar(
+              backgroundColor: CsColors.white,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.close_rounded),
+                color: CsColors.gray700,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            )
+          : null,
       body: SafeArea(
+        // When AppBar is shown it already provides top safe area.
+        top: !widget.showClose,
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             children: [
-              const SizedBox(height: 40),
+              SizedBox(height: widget.showClose ? 8 : 40),
 
               // ── Logo ─────────────────────────────────────
               SizedBox(
@@ -287,7 +335,7 @@ class _AuthScreenState extends State<AuthScreen>
               ),
               const SizedBox(height: 16),
               Text(
-                'Willkommen',
+                l.authWelcome,
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w700,
@@ -297,7 +345,7 @@ class _AuthScreenState extends State<AuthScreen>
               ),
               const SizedBox(height: 4),
               Text(
-                'Dein Team. Deine Matches.',
+                l.authSubtitle,
                 style: TextStyle(
                   fontSize: 14,
                   color: CsColors.gray500,
@@ -338,9 +386,9 @@ class _AuthScreenState extends State<AuthScreen>
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
-                  tabs: const [
-                    Tab(text: 'Anmelden'),
-                    Tab(text: 'Registrieren'),
+                  tabs: [
+                    Tab(text: l.login),
+                    Tab(text: l.register),
                   ],
                 ),
               ),
@@ -368,6 +416,8 @@ class _AuthScreenState extends State<AuthScreen>
   // ── LOGIN FORM ──────────────────────────────────────────
 
   Widget _buildLoginForm() {
+    final l = AppLocalizations.of(context)!;
+
     return Column(
       key: const ValueKey('login'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -382,7 +432,7 @@ class _AuthScreenState extends State<AuthScreen>
           autofillHints: const [AutofillHints.email],
           style: TextStyle(fontSize: 15, color: CsColors.gray900),
           decoration: _inputDecoration(
-            label: 'E-Mail',
+            label: l.email,
             hint: 'name@domain.ch',
             prefixIcon: Icons.email_outlined,
           ),
@@ -397,7 +447,7 @@ class _AuthScreenState extends State<AuthScreen>
           autofillHints: const [AutofillHints.password],
           style: TextStyle(fontSize: 15, color: CsColors.gray900),
           decoration: _inputDecoration(
-            label: 'Passwort',
+            label: l.password,
             hint: '••••••••',
             prefixIcon: Icons.lock_outline,
             suffixIcon: IconButton(
@@ -434,7 +484,7 @@ class _AuthScreenState extends State<AuthScreen>
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(
-              'Passwort vergessen?',
+              l.forgotPassword,
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -447,7 +497,7 @@ class _AuthScreenState extends State<AuthScreen>
 
         // Submit
         CsPrimaryButton(
-          label: 'Anmelden',
+          label: l.login,
           loading: _loginLoading,
           onPressed: _loginLoading ? null : _login,
           icon: const Icon(Icons.login_rounded, size: 18),
@@ -459,6 +509,8 @@ class _AuthScreenState extends State<AuthScreen>
   // ── REGISTER FORM ───────────────────────────────────────
 
   Widget _buildRegisterForm() {
+    final l = AppLocalizations.of(context)!;
+
     return Column(
       key: const ValueKey('register'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -473,7 +525,7 @@ class _AuthScreenState extends State<AuthScreen>
           autofillHints: const [AutofillHints.email],
           style: TextStyle(fontSize: 15, color: CsColors.gray900),
           decoration: _inputDecoration(
-            label: 'E-Mail',
+            label: l.email,
             hint: 'name@domain.ch',
             prefixIcon: Icons.email_outlined,
           ),
@@ -488,8 +540,8 @@ class _AuthScreenState extends State<AuthScreen>
           autofillHints: const [AutofillHints.newPassword],
           style: TextStyle(fontSize: 15, color: CsColors.gray900),
           decoration: _inputDecoration(
-            label: 'Passwort',
-            hint: 'Mind. 8 Zeichen, 1 Zahl',
+            label: l.password,
+            hint: l.passwordHint,
             prefixIcon: Icons.lock_outline,
             suffixIcon: IconButton(
               icon: Icon(
@@ -513,7 +565,7 @@ class _AuthScreenState extends State<AuthScreen>
           textInputAction: TextInputAction.done,
           style: TextStyle(fontSize: 15, color: CsColors.gray900),
           decoration: _inputDecoration(
-            label: 'Passwort bestätigen',
+            label: l.confirmPassword,
             hint: '••••••••',
             prefixIcon: Icons.lock_outline,
             suffixIcon: IconButton(
@@ -538,7 +590,7 @@ class _AuthScreenState extends State<AuthScreen>
             Icon(Icons.info_outline, size: 14, color: CsColors.gray400),
             const SizedBox(width: 6),
             Text(
-              'Mind. 8 Zeichen mit mind. 1 Zahl',
+              l.passwordHint,
               style: TextStyle(fontSize: 12, color: CsColors.gray400),
             ),
           ],
@@ -547,7 +599,7 @@ class _AuthScreenState extends State<AuthScreen>
 
         // Submit
         CsPrimaryButton(
-          label: 'Registrieren',
+          label: l.register,
           loading: _regLoading,
           onPressed: _regLoading ? null : _register,
           icon: const Icon(Icons.person_add_outlined, size: 18),

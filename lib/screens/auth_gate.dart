@@ -10,6 +10,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../l10n/app_localizations.dart';
 import '../services/profile_service.dart';
 import '../services/identity_link_service.dart';
 import '../services/invite_service.dart';
@@ -35,7 +36,7 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   StreamSubscription<String>? _inviteSub;
-  StreamSubscription<void>? _pwRecoverySub;
+  StreamSubscription<AuthState>? _authEventSub;
 
   /// True while we're creating an on-demand anon session for an invite.
   bool _creatingAnonForInvite = false;
@@ -44,13 +45,13 @@ class _AuthGateState extends State<AuthGate> {
   void initState() {
     super.initState();
     _listenForInviteWithoutSession();
-    _listenForPasswordRecovery();
+    _listenForAuthEvents();
   }
 
   @override
   void dispose() {
     _inviteSub?.cancel();
-    _pwRecoverySub?.cancel();
+    _authEventSub?.cancel();
     super.dispose();
   }
 
@@ -78,14 +79,23 @@ class _AuthGateState extends State<AuthGate> {
     });
   }
 
-  /// Password recovery deep links push the ResetPasswordScreen.
-  void _listenForPasswordRecovery() {
-    _pwRecoverySub = DeepLinkService.instance.onPasswordRecovery.listen((_) {
-      if (!mounted) return;
-      // Push ResetPasswordScreen on top of whatever is showing
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
-      );
+  /// Listen for auth events — specifically password recovery.
+  ///
+  /// When the user clicks a password-reset deep link
+  /// (`io.courtswiss://reset-password?code=...`), `supabase_flutter`
+  /// automatically exchanges the PKCE code for a session and fires
+  /// [AuthChangeEvent.passwordRecovery].  We react by pushing the
+  /// [ResetPasswordScreen].
+  void _listenForAuthEvents() {
+    _authEventSub =
+        Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      debugPrint('AuthGate: auth event=${data.event}');
+      if (data.event == AuthChangeEvent.passwordRecovery) {
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
+        );
+      }
     });
   }
 
@@ -127,6 +137,9 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
   /// Guard to prevent showing the name dialog more than once at a time.
   bool _nameDialogShowing = false;
 
+  /// Guard to prevent concurrent invite processing (deep link can fire twice).
+  bool _processingInvite = false;
+
   @override
   void initState() {
     super.initState();
@@ -147,8 +160,11 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
     NotificationService.subscribe(
       onInsert: (notification) {
         if (!mounted) return;
-        final message = NotificationService.formatMessage(notification);
-        CsToast.info(context, message);
+        final rootCtx = navigatorKey.currentContext;
+        if (rootCtx == null) return;
+        final l = AppLocalizations.of(rootCtx);
+        final message = NotificationService.formatMessage(notification, l);
+        CsToast.info(rootCtx, message);
       },
     );
   }
@@ -195,6 +211,10 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
   }
 
   Future<void> _acceptInviteToken(String token) async {
+    // Guard against concurrent invite processing (deep link can fire twice).
+    if (_processingInvite) return;
+    _processingInvite = true;
+
     // ignore: avoid_print
     print('ACCEPT_INVITE token=$token');
     try {
@@ -205,8 +225,11 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
       );
       if (!mounted) return;
 
+      // Capture navigator via global key – safe across async gaps.
+      final nav = navigatorKey.currentState;
+
       // Pop any pushed screens back to root
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      nav?.popUntil((route) => route.isFirst);
 
       // Force TeamsScreen to rebuild and re-fetch
       setState(() => _refreshCounter++);
@@ -233,7 +256,7 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
 
           if (!mounted) return;
 
-          final claimed = await Navigator.of(context).push<bool>(
+          final claimed = await nav?.push<bool>(
             MaterialPageRoute(
               builder: (_) => ClaimScreen(
                 teamId: result.teamId,
@@ -248,11 +271,9 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
             // User skipped claiming → show mandatory name dialog as fallback
             final name = await _showMandatoryNameDialog(result.teamId);
             if (!mounted) return;
-            if (name != null) {
-              CsToast.success(context, 'Willkommen, $name!');
-            }
+            _showToast(CsToast.success, name != null ? 'Willkommen, $name!' : null);
           } else {
-            CsToast.success(context, 'Spieler zugeordnet');
+            _showToast(CsToast.success, 'Spieler zugeordnet');
           }
 
           // Navigate to TeamDetailScreen
@@ -262,26 +283,42 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
           final name = await _showMandatoryNameDialog(result.teamId);
           if (!mounted) return;
 
-          if (name != null) {
-            CsToast.success(context, 'Willkommen, $name!');
-          }
-
+          _showToast(CsToast.success, name != null ? 'Willkommen, $name!' : null);
           _navigateToTeam(result.teamId, null);
         }
       } else {
-        CsToast.info(context, 'Du bist bereits Mitglied dieses Teams');
+        _showToast(CsToast.info, 'Du bist bereits Mitglied dieses Teams');
       }
     } catch (e) {
       debugPrint('acceptInvite failed: $e');
       if (!mounted) return;
-      CsToast.error(context, 'Einladung konnte nicht angenommen werden.');
+      _showToast(CsToast.error, 'Einladung konnte nicht angenommen werden.');
+    } finally {
+      _processingInvite = false;
     }
+  }
+
+  /// Show a toast using the global [navigatorKey] context – safe after async gaps.
+  void _showToast(void Function(BuildContext, String) toastFn, String? message) {
+    if (message == null) return;
+    final ctx = navigatorKey.currentContext;
+    if (ctx != null) toastFn(ctx, message);
   }
 
   Future<void> _navigateToTeam(
     String teamId,
     Map<String, dynamic>? preloadedTeam,
   ) async {
+    // Wait one frame so any pending route exit animations (sheet pop,
+    // ClaimScreen pop) are fully processed before we push a new route.
+    // Pushing in the same frame as a pop can corrupt the navigator
+    // overlay's _children list → '_children.contains(child)' assertion.
+    final completer = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) => completer.complete());
+    await completer.future;
+
+    if (!mounted) return;
+
     try {
       final team =
           preloadedTeam ??
@@ -292,7 +329,7 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
               .single();
 
       if (!mounted) return;
-      Navigator.of(context).push(
+      navigatorKey.currentState?.push(
         MaterialPageRoute(
           builder: (_) => TeamDetailScreen(teamId: teamId, team: team),
         ),
@@ -311,6 +348,10 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
     final controller = TextEditingController();
     String? savedName;
 
+    // Capture the root navigator BEFORE showing the sheet – safe for
+    // post-await usage even if the sheet's local context is deactivated.
+    final rootNav = navigatorKey.currentState;
+
     await showModalBottomSheet<void>(
       context: context,
       isDismissible: false,
@@ -318,7 +359,7 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       sheetAnimationStyle: CsMotion.sheet,
-      builder: (ctx) {
+      builder: (sheetCtx) {
         bool saving = false;
         String? errorText;
 
@@ -329,143 +370,179 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
               final text = controller.text.trim();
               final isValid = text.length >= 2 && text.length <= 30;
 
-              return Container(
-                margin: EdgeInsets.only(
-                  bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              // Use sheetCtx (outer route context) for MediaQuery so
+              // the StatefulBuilder element does NOT register as a
+              // MediaQuery dependent.  This prevents the
+              // '_dependents.isEmpty' assertion when the keyboard
+              // dismisses during the sheet's exit animation.
+              final bottomInset =
+                  MediaQuery.of(sheetCtx).viewInsets.bottom;
+              final safeBottom =
+                  MediaQuery.of(sheetCtx).padding.bottom;
+
+              return ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(CsRadii.xl),
                 ),
-                decoration: const BoxDecoration(
-                  color: CsColors.blackCard,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(CsRadii.xl),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: CsColors.white,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(CsRadii.xl),
+                    ),
                   ),
-                ),
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                child: SafeArea(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Wie heisst du?',
-                        style: CsTextStyles.onDarkPrimary.copyWith(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                      // Drag handle
+                      Center(
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 10, bottom: 4),
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: CsColors.gray300,
+                            borderRadius:
+                                BorderRadius.circular(CsRadii.full),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Bitte gib deinen Namen ein,\ndamit dein Team dich erkennt.',
-                        style: CsTextStyles.onDarkSecondary.copyWith(
-                          fontSize: 14,
+                      // Content
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          20,
+                          12,
+                          20,
+                          16 + bottomInset + safeBottom,
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                      TextField(
-                        controller: controller,
-                        style: CsTextStyles.onDarkPrimary,
-                        decoration: InputDecoration(
-                          labelText: 'Dein Name im Team',
-                          hintText: 'z.B. Max, Sandro, Martin W.',
-                          errorText: errorText,
-                          counterText: '${text.length}/30',
-                          counterStyle: CsTextStyles.onDarkTertiary.copyWith(
-                            fontSize: 11,
-                          ),
-                          labelStyle: CsTextStyles.onDarkSecondary,
-                          hintStyle: CsTextStyles.onDarkTertiary,
-                          prefixIcon: const Icon(
-                            Icons.person_outline,
-                            color: CsColors.gray400,
-                            size: 20,
-                          ),
-                          filled: true,
-                          fillColor: Colors.white.withValues(alpha: 0.07),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(CsRadii.md),
-                            borderSide: BorderSide(
-                              color:
-                                  Colors.white.withValues(alpha: 0.12),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Icon
+                            Center(
+                              child: Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  color: CsColors.gray100,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.person_outline_rounded,
+                                  color: CsColors.gray700,
+                                  size: 26,
+                                ),
+                              ),
                             ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(CsRadii.md),
-                            borderSide: const BorderSide(
-                              color: CsColors.lime,
-                              width: 1.5,
+                            const SizedBox(height: 16),
+                            Center(
+                              child: Text(
+                                'Wie heisst du?',
+                                style: CsTextStyles.titleLarge,
+                              ),
                             ),
-                          ),
-                          errorBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(CsRadii.md),
-                            borderSide: const BorderSide(
-                              color: CsColors.amber,
+                            const SizedBox(height: 6),
+                            Center(
+                              child: Text(
+                                'Bitte gib deinen Namen ein,\ndamit dein Team dich erkennt.',
+                                style: CsTextStyles.bodyMedium,
+                                textAlign: TextAlign.center,
+                              ),
                             ),
-                          ),
-                          focusedErrorBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(CsRadii.md),
-                            borderSide: const BorderSide(
-                              color: CsColors.amber,
-                              width: 1.5,
+                            const SizedBox(height: 20),
+                            Text(
+                              'Dein Name im Team',
+                              style: CsTextStyles.labelSmall,
                             ),
-                          ),
-                        ),
-                        autofocus: true,
-                        textCapitalization: TextCapitalization.words,
-                        maxLength: 30,
-                        onChanged: (_) => setStateSheet(() {}),
-                      ),
-                      if (saving) ...[
-                        const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius:
-                              BorderRadius.circular(CsRadii.md),
-                          child: const LinearProgressIndicator(
-                            color: CsColors.lime,
-                            backgroundColor: CsColors.blackCard2,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      CsPrimaryButton(
-                        label: 'Speichern',
-                        icon: const Icon(Icons.check_rounded, size: 18),
-                        onPressed: (!isValid || saving)
-                            ? null
-                            : () async {
-                                final name = controller.text.trim();
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: controller,
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: CsColors.gray900,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: 'z.B. Max, Sandro, Martin W.',
+                                errorText: errorText,
+                                counterText: '${text.length}/30',
+                                prefixIcon: const Icon(
+                                  Icons.person_outline,
+                                  color: CsColors.gray500,
+                                  size: 20,
+                                ),
+                              ),
+                              autofocus: true,
+                              textCapitalization:
+                                  TextCapitalization.words,
+                              maxLength: 30,
+                              onChanged: (_) => setStateSheet(() {}),
+                            ),
+                            if (saving) ...[
+                              const SizedBox(height: 8),
+                              ClipRRect(
+                                borderRadius:
+                                    BorderRadius.circular(CsRadii.md),
+                                child: LinearProgressIndicator(
+                                  color: CsColors.gray900,
+                                  backgroundColor: CsColors.gray200,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            CsPrimaryButton(
+                              label: 'Speichern',
+                              icon: const Icon(
+                                Icons.check_rounded,
+                                size: 18,
+                              ),
+                              onPressed: (!isValid || saving)
+                                  ? null
+                                  : () async {
+                                      final name =
+                                          controller.text.trim();
 
-                                if (name.length < 2) {
-                                  setStateSheet(
-                                    () => errorText =
-                                        'Mindestens 2 Zeichen',
-                                  );
-                                  return;
-                                }
+                                      if (name.length < 2) {
+                                        setStateSheet(
+                                          () => errorText =
+                                              'Mindestens 2 Zeichen',
+                                        );
+                                        return;
+                                      }
 
-                                setStateSheet(() {
-                                  saving = true;
-                                  errorText = null;
-                                });
+                                      setStateSheet(() {
+                                        saving = true;
+                                        errorText = null;
+                                      });
 
-                                try {
-                                  await MemberService.updateMyNickname(
-                                    teamId,
-                                    name,
-                                  );
-                                  savedName = name;
-                                  if (ctx.mounted) Navigator.pop(ctx);
-                                } catch (e) {
-                                  setStateSheet(() {
-                                    saving = false;
-                                    errorText = 'Name konnte nicht gespeichert werden.';
-                                  });
-                                }
-                              },
+                                      try {
+                                        await MemberService
+                                            .updateMyNickname(
+                                          teamId,
+                                          name,
+                                        );
+                                        savedName = name;
+                                        // Use root navigator to pop –
+                                        // the sheet's local ctx may
+                                        // already be deactivated after
+                                        // the await.
+                                        rootNav?.pop();
+                                      } catch (e) {
+                                        // Guard: sheet may have been
+                                        // dismissed externally while
+                                        // the RPC was running.
+                                        if (!ctx.mounted) return;
+                                        setStateSheet(() {
+                                          saving = false;
+                                          errorText =
+                                              'Name konnte nicht gespeichert werden.';
+                                        });
+                                      }
+                                    },
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 8),
                     ],
                   ),
                 ),
@@ -477,7 +554,11 @@ class _LoggedInScreenState extends State<LoggedInScreen> {
     );
 
     _nameDialogShowing = false;
-    controller.dispose();
+    // Defer disposal: the sheet's exit animation is still running and the
+    // TextField inside still references this controller.  Disposing it now
+    // causes a repaint cascade → overlay '_children.contains(child)' assert.
+    final ctrl = controller;
+    WidgetsBinding.instance.addPostFrameCallback((_) => ctrl.dispose());
     return savedName;
   }
 

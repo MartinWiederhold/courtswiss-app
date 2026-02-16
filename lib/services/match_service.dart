@@ -1,7 +1,16 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MatchService {
   static final _supabase = Supabase.instance.client;
+
+  /// Fires whenever a match is created or deleted.
+  /// Other screens (e.g. SpieleOverviewScreen) can listen to this to
+  /// know when they should reload their data.
+  static final ValueNotifier<int> matchChangeNotifier = ValueNotifier<int>(0);
+
+  /// Increment the notifier to signal that matches have changed.
+  static void notifyMatchesChanged() => matchChangeNotifier.value++;
 
   /// Lists all matches across ALL teams the current user belongs to.
   ///
@@ -69,6 +78,7 @@ class MatchService {
       'note': note,
       'created_by': uid,
     });
+    notifyMatchesChanged();
   }
 
   /// Loads all availability rows for a single match.
@@ -105,6 +115,7 @@ class MatchService {
   /// Deletes a match (only admins via RLS). Cascades to availability.
   static Future<void> deleteMatch(String matchId) async {
     await _supabase.from('cs_matches').delete().eq('id', matchId);
+    notifyMatchesChanged();
   }
 
   /// Sets (upserts) the current user's availability for a match.

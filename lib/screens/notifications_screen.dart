@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../l10n/app_localizations.dart';
 import '../services/notification_service.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/ui/ui.dart';
@@ -34,7 +35,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      CsToast.error(context, 'Benachrichtigungen konnten nicht geladen werden.');
+      CsToast.error(context, AppLocalizations.of(context)!.notifLoadError);
     }
   }
 
@@ -79,7 +80,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
       } catch (e) {
         if (!mounted) return;
-        CsToast.error(context, 'Spiel konnte nicht geladen werden.');
+        CsToast.error(context, AppLocalizations.of(context)!.matchLoadError);
       }
     }
 
@@ -93,7 +94,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _load();
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Benachrichtigungen konnten nicht geladen werden.');
+      CsToast.error(context, AppLocalizations.of(context)!.notifLoadError);
     }
   }
 
@@ -128,31 +129,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  String _timeAgo(String? isoDate) {
+  String _timeAgo(String? isoDate, AppLocalizations l) {
     if (isoDate == null) return '';
     final dt = DateTime.tryParse(isoDate)?.toLocal();
     if (dt == null) return '';
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'gerade eben';
-    if (diff.inMinutes < 60) return 'vor ${diff.inMinutes} Min.';
-    if (diff.inHours < 24) return 'vor ${diff.inHours} Std.';
-    if (diff.inDays < 7) return 'vor ${diff.inDays} Tagen';
+    if (diff.inMinutes < 1) return l.timeJustNow;
+    if (diff.inMinutes < 60) return l.timeMinutesAgo('${diff.inMinutes}');
+    if (diff.inHours < 24) return l.timeHoursAgo('${diff.inHours}');
+    if (diff.inDays < 7) return l.timeDaysAgo('${diff.inDays}');
     return '${dt.day}.${dt.month}.${dt.year}';
   }
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final unreadCount =
         _notifications.where((n) => n['read_at'] == null).length;
 
     return CsScaffoldList(
       appBar: CsGlassAppBar(
-        title: 'Benachrichtigungen ($unreadCount)',
+        title: l.notifTitleWithCount('$unreadCount'),
         actions: [
           if (unreadCount > 0)
             TextButton(
               onPressed: _markAllRead,
-              child: const Text('Alle gelesen'),
+              child: Text(l.markAllRead),
             ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
@@ -168,8 +170,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ? Center(
                   child: CsEmptyState(
                     icon: Icons.notifications_none,
-                    title: 'Alles gelesen',
-                    subtitle: 'Neue Benachrichtigungen erscheinen automatisch hier.',
+                    title: l.allReadTitle,
+                    subtitle: l.allReadSubtitle,
                   ),
                 )
               : RefreshIndicator(
@@ -182,8 +184,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       final isUnread = n['read_at'] == null;
                       final type = n['type'] as String? ?? '';
 
-                      final title = NotificationService.formatTitle(n);
-                      final body = NotificationService.formatMessage(n);
+                      final title = NotificationService.formatTitle(n, l);
+                      final body = NotificationService.formatMessage(n, l);
 
                       final navTypes = {
                         'lineup_published',
@@ -199,7 +201,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         child: _NotificationCard(
                           title: title,
                           body: body,
-                          timeAgo: _timeAgo(n['created_at'] as String?),
+                          timeAgo: _timeAgo(n['created_at'] as String?, l),
                           icon: _notifIcon(type),
                           isUnread: isUnread,
                           hasNav: hasNav,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../l10n/app_localizations.dart';
 import '../models/ranking_data.dart';
 import '../theme/cs_theme.dart';
 
@@ -33,6 +34,7 @@ class RankingSelector extends StatefulWidget {
 enum _ActiveDrop { none, country, ranking }
 
 class _RankingSelectorState extends State<RankingSelector> {
+  late AppLocalizations l;
   final _countryLink = LayerLink();
   final _rankingLink = LayerLink();
   final _countryKey = GlobalKey();
@@ -42,6 +44,12 @@ class _RankingSelectorState extends State<RankingSelector> {
   _ActiveDrop _active = _ActiveDrop.none;
 
   // ── Lifecycle ──────────────────────────────────────────────
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    l = AppLocalizations.of(context)!;
+  }
 
   @override
   void dispose() {
@@ -143,7 +151,7 @@ class _RankingSelectorState extends State<RankingSelector> {
 
   List<Widget> _countryItems() {
     return [
-      _sectionHeader('Verfügbar'),
+      _sectionHeader(l.rankingAvailableSection),
       for (final c in RankingData.countries)
         _itemTile(
           label: c.name,
@@ -246,7 +254,7 @@ class _RankingSelectorState extends State<RankingSelector> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Country field ──
-        Text('Land *', style: CsTextStyles.labelSmall),
+        Text(l.countryLabel, style: CsTextStyles.labelSmall),
         const SizedBox(height: 6),
         CompositedTransformTarget(
           link: _countryLink,
@@ -257,7 +265,7 @@ class _RankingSelectorState extends State<RankingSelector> {
               decoration: InputDecoration(
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                hintText: 'Bitte auswählen',
+                hintText: l.dropdownHint,
                 suffixIcon: AnimatedRotation(
                   turns: _active == _ActiveDrop.country ? 0.5 : 0.0,
                   duration: const Duration(milliseconds: 130),
@@ -279,7 +287,7 @@ class _RankingSelectorState extends State<RankingSelector> {
         const SizedBox(height: 16),
 
         // ── Ranking field ──
-        Text('Ranking *', style: CsTextStyles.labelSmall),
+        Text(l.rankingLabelRequired, style: CsTextStyles.labelSmall),
         const SizedBox(height: 6),
         CompositedTransformTarget(
           link: _rankingLink,
@@ -290,7 +298,7 @@ class _RankingSelectorState extends State<RankingSelector> {
               decoration: InputDecoration(
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                hintText: 'Bitte auswählen',
+                hintText: l.dropdownHint,
                 errorText: widget.rankingError,
                 suffixIcon: AnimatedRotation(
                   turns: _active == _ActiveDrop.ranking ? 0.5 : 0.0,

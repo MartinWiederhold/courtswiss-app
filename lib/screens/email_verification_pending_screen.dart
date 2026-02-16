@@ -1,14 +1,20 @@
 // ── DEV NOTE ──────────────────────────────────────────────────────
-// New screen: Shown after a user registers with email + password.
-// Tells the user to check their inbox and click the confirmation link.
-// Provides a "Resend" button + auto-polls auth state to detect
-// when the user returns from the confirmation link.
-// Created as part of Auth/Onboarding v2 rework.
+// Shown after sign-up (or anon-upgrade) when the session is null,
+// i.e. email confirmation is required before login is possible.
+//
+// UX principles:
+//   • Anti-enumeration: wording never confirms whether an account
+//     with the given email actually exists.
+//   • Resend with rate-limit handling.
+//   • "Already have an account? Log in" CTA pops back to AuthScreen
+//     with the email pre-filled on the login tab.
+//   • Auto-detects successful confirmation via onAuthStateChange.
 // ──────────────────────────────────────────────────────────────────
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/ui/ui.dart';
 
@@ -50,6 +56,7 @@ class _EmailVerificationPendingScreenState
   }
 
   Future<void> _resendEmail() async {
+    final l = AppLocalizations.of(context)!;
     setState(() => _resending = true);
     try {
       await Supabase.instance.client.auth.resend(
@@ -58,10 +65,16 @@ class _EmailVerificationPendingScreenState
         emailRedirectTo: 'io.courtswiss://login',
       );
       if (!mounted) return;
-      CsToast.success(context, 'E-Mail erneut gesendet.');
+      CsToast.success(context, l.resendEmailSuccess);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      debugPrint('resendEmail AuthException: '
+          'statusCode=${e.statusCode} message=${e.message}');
+      CsToast.error(context, l.resendEmailRateLimit);
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'E-Mail konnte nicht gesendet werden.');
+      debugPrint('resendEmail error: $e');
+      CsToast.error(context, l.resendEmailRateLimit);
     } finally {
       if (mounted) setState(() => _resending = false);
     }
@@ -69,6 +82,8 @@ class _EmailVerificationPendingScreenState
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+
     return Scaffold(
       backgroundColor: CsColors.white,
       appBar: const CsGlassAppBar(title: ''),
@@ -78,7 +93,8 @@ class _EmailVerificationPendingScreenState
           child: Column(
             children: [
               const Spacer(flex: 2),
-              // Icon
+
+              // ── Icon ──────────────────────────────────────────
               Container(
                 width: 80,
                 height: 80,
@@ -93,8 +109,10 @@ class _EmailVerificationPendingScreenState
                 ),
               ),
               const SizedBox(height: 24),
+
+              // ── Title ─────────────────────────────────────────
               Text(
-                'Bitte bestätige deine E-Mail',
+                l.verificationPendingTitle,
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
@@ -104,12 +122,8 @@ class _EmailVerificationPendingScreenState
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
-              Text(
-                'Wir haben eine Bestätigungs-E-Mail an',
-                style: TextStyle(fontSize: 14, color: CsColors.gray600),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
+
+              // ── Email (bold) ──────────────────────────────────
               Text(
                 widget.email,
                 style: TextStyle(
@@ -119,26 +133,30 @@ class _EmailVerificationPendingScreenState
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 10),
+
+              // ── Neutral body (anti-enumeration) ───────────────
               Text(
-                'gesendet. Bitte klicke auf den Link in der E-Mail,\num dein Konto zu aktivieren.',
+                l.verificationPendingBody,
                 style: TextStyle(fontSize: 14, color: CsColors.gray600),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              // Resend button
+
+              // ── Resend confirmation email ─────────────────────
               CsSecondaryButton(
-                label: 'E-Mail erneut senden',
+                label: l.resendConfirmationEmail,
                 loading: _resending,
                 onPressed: _resending ? null : _resendEmail,
                 icon: const Icon(Icons.refresh_rounded, size: 18),
               ),
               const SizedBox(height: 12),
-              // Back to login
+
+              // ── Already have an account? Log in ───────────────
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(context, widget.email),
                 child: Text(
-                  'Zurück zur Anmeldung',
+                  l.alreadyHaveAccountLogin,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
@@ -146,6 +164,7 @@ class _EmailVerificationPendingScreenState
                   ),
                 ),
               ),
+
               const Spacer(flex: 3),
             ],
           ),

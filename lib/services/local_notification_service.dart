@@ -45,9 +45,9 @@ class LocalNotificationService {
     if (!_initialized) return;
 
     const androidDetails = AndroidNotificationDetails(
-      'courtswiss_default', // channel id
-      'CourtSwiss', // channel name
-      channelDescription: 'CourtSwiss Benachrichtigungen',
+      'lineup_default', // channel id
+      'Lineup', // channel name
+      channelDescription: 'Lineup Benachrichtigungen',
       importance: Importance.high,
       priority: Priority.high,
     );

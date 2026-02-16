@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
+import '../services/push_service.dart' show navigatorKey;
 import '../services/team_player_service.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/ui/ui.dart';
@@ -41,7 +43,10 @@ class _ClaimScreenState extends State<ClaimScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      final rootCtx = navigatorKey.currentContext;
+      if (rootCtx != null) {
+        CsToast.error(rootCtx, AppLocalizations.of(rootCtx)!.genericError);
+      }
     }
   }
 
@@ -60,6 +65,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
     final ranking = TeamPlayerService.rankingLabel(player);
     final label = ranking.isNotEmpty ? '$name · $ranking' : name;
 
+    final l = AppLocalizations.of(context)!;
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -67,10 +73,10 @@ class _ClaimScreenState extends State<ClaimScreen> {
       barrierColor: CsColors.black.withValues(alpha: 0.35),
       sheetAnimationStyle: CsMotion.sheet,
       builder: (ctx) => CsBottomSheetForm(
-        title: 'Spieler bestätigen',
-        ctaLabel: 'Ja, das bin ich',
+        title: l.claimConfirmTitle,
+        ctaLabel: l.claimConfirmCta,
         onCta: () => Navigator.pop(ctx, true),
-        secondaryLabel: 'Abbrechen',
+        secondaryLabel: l.cancel,
         onSecondary: () => Navigator.pop(ctx, false),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -78,7 +84,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
             Icon(Icons.person, size: 40, color: CsColors.blue),
             const SizedBox(height: 12),
             Text(
-              'Bist du "$label"?',
+              l.claimConfirmBody(label),
               style: CsTextStyles.bodySmall.copyWith(fontSize: 15),
             ),
           ],
@@ -88,6 +94,12 @@ class _ClaimScreenState extends State<ClaimScreen> {
     if (confirmed != true || !mounted) return;
 
     setState(() => _claiming = true);
+
+    // Capture toast message before the await – l10n depends on context
+    // which may be stale after the async gap.
+    final welcomeToastFn = l.claimWelcomeToast;
+    final errorMsg = l.genericError;
+
     try {
       final result = await TeamPlayerService.claimPlayer(
         teamId: widget.teamId,
@@ -96,14 +108,22 @@ class _ClaimScreenState extends State<ClaimScreen> {
       if (!mounted) return;
 
       final fullName = result['full_name'] as String? ?? name;
-      CsToast.success(context, 'Willkommen, $fullName!');
 
-      // Pop back with success = true
-      Navigator.pop(context, true);
+      // Use root navigator context for toast + pop – safe after async.
+      final rootCtx = navigatorKey.currentContext;
+      if (rootCtx != null) {
+        CsToast.success(rootCtx, welcomeToastFn(fullName));
+      }
+
+      // Pop back with success = true via root navigator.
+      navigatorKey.currentState?.pop(true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _claiming = false);
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      final rootCtx = navigatorKey.currentContext;
+      if (rootCtx != null) {
+        CsToast.error(rootCtx, errorMsg);
+      }
     }
   }
 
@@ -115,17 +135,18 @@ class _ClaimScreenState extends State<ClaimScreen> {
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredPlayers;
+    final l = AppLocalizations.of(context)!;
 
     return PopScope(
       canPop: false,
       child: CsScaffoldList(
         appBar: CsGlassAppBar(
-          title: 'Wer bist du?',
+          title: l.claimWhoAreYou,
           automaticallyImplyLeading: false,
           actions: [
             TextButton(
               onPressed: _claiming ? null : _skipClaim,
-              child: const Text('Überspringen'),
+              child: Text(l.commonSkip),
             ),
           ],
         ),
@@ -146,7 +167,6 @@ class _ClaimScreenState extends State<ClaimScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                     child: CsCard(
-                      accentBarColor: CsColors.lime,
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
@@ -165,8 +185,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Wähle deinen Namen aus der Liste,\n'
-                            'damit das Team dich zuordnen kann.',
+                            l.claimPickName,
                             textAlign: TextAlign.center,
                             style: CsTextStyles.onDarkSecondary.copyWith(
                               fontSize: 13,
@@ -185,9 +204,9 @@ class _ClaimScreenState extends State<ClaimScreen> {
                         vertical: 8,
                       ),
                       child: TextField(
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.search),
-                          hintText: 'Name suchen…',
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search),
+                          hintText: l.claimSearchHint,
                           isDense: true,
                         ),
                         onChanged: (v) => setState(() => _search = v),
@@ -208,10 +227,8 @@ class _ClaimScreenState extends State<ClaimScreen> {
                       child: Center(
                         child: CsEmptyState(
                           icon: Icons.person_off,
-                          title: 'Kein freier Platz',
-                          subtitle:
-                              'Dein Captain hat noch keine Spieler angelegt\n'
-                              'oder alle Plätze sind bereits vergeben.',
+                          title: l.claimNoSlotTitle,
+                          subtitle: l.claimNoSlotBody,
                         ),
                       ),
                     )

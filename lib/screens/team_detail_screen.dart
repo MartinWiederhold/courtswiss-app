@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import '../l10n/app_localizations.dart';
 import '../models/ranking_data.dart';
 import '../models/sport.dart';
 import '../services/invite_service.dart';
@@ -9,6 +10,7 @@ import '../services/member_service.dart';
 import '../services/avatar_service.dart';
 import '../services/match_service.dart';
 import '../services/notification_service.dart';
+import '../services/push_service.dart' show navigatorKey;
 import '../services/team_player_service.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/ranking_selector.dart';
@@ -33,7 +35,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
   // ── Tab state ──
   int _tabIndex = 0;
-  static const _tabLabels = ['Übersicht', 'Team', 'Spiele'];
 
   bool _loading = true;
   String? _error;
@@ -118,6 +119,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
 
   Future<void> _addPlayerSlotDialog() async {
+    final l = AppLocalizations.of(context)!;
     final firstCtrl = TextEditingController();
     final lastCtrl = TextEditingController();
     String selectedCountry = 'CH';
@@ -131,10 +133,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       backgroundColor: Colors.transparent,
       barrierColor: CsColors.black.withValues(alpha: 0.35),
       sheetAnimationStyle: CsMotion.sheet,
-      builder: (ctx) => StatefulBuilder(
+      builder: (sheetCtx) => StatefulBuilder(
         builder: (ctx, setStateBs) {
-          final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
-          final safeBottom = MediaQuery.of(ctx).padding.bottom;
+          // Use sheetCtx (outer route context) for MediaQuery so the
+          // StatefulBuilder element does NOT register as a MediaQuery
+          // dependent – prevents '_dependents.isEmpty' assertion when
+          // keyboard dismisses during exit animation.
+          final bottomInset = MediaQuery.of(sheetCtx).viewInsets.bottom;
+          final safeBottom = MediaQuery.of(sheetCtx).padding.bottom;
 
           return ClipRRect(
             borderRadius: const BorderRadius.vertical(
@@ -172,7 +178,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            'Spieler hinzufügen',
+                            l.addPlayer,
                             style: CsTextStyles.titleLarge,
                           ),
                         ),
@@ -203,23 +209,23 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('Vorname *', style: CsTextStyles.labelSmall),
+                          Text(l.firstName, style: CsTextStyles.labelSmall),
                           const SizedBox(height: 6),
                           TextField(
                             controller: firstCtrl,
-                            decoration: const InputDecoration(
-                              hintText: 'Max',
+                            decoration: InputDecoration(
+                              hintText: l.firstNameHint,
                             ),
                             textCapitalization: TextCapitalization.words,
                             autofocus: true,
                           ),
                           const SizedBox(height: 16),
-                          Text('Nachname *', style: CsTextStyles.labelSmall),
+                          Text(l.lastName, style: CsTextStyles.labelSmall),
                           const SizedBox(height: 6),
                           TextField(
                             controller: lastCtrl,
-                            decoration: const InputDecoration(
-                              hintText: 'Muster',
+                            decoration: InputDecoration(
+                              hintText: l.lastNameHint,
                             ),
                             textCapitalization: TextCapitalization.words,
                           ),
@@ -271,12 +277,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               final first = firstCtrl.text.trim();
                               final last = lastCtrl.text.trim();
                               if (first.isEmpty || last.isEmpty) {
-                                CsToast.info(ctx, 'Bitte Vor- und Nachname eingeben.');
+                                CsToast.info(ctx, l.enterFirstAndLastName);
                                 return;
                               }
                               if (selectedRanking == null) {
                                 setStateBs(() {
-                                  rankingError = 'Bitte ein Ranking auswählen.';
+                                  rankingError = l.selectRanking;
                                 });
                                 return;
                               }
@@ -289,15 +295,19 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                   lastName: last,
                                   ranking: selectedRanking,
                                 );
-                                if (ctx.mounted) Navigator.pop(ctx);
+                                // Use root navigator – ctx may be
+                                // deactivated after the async gap.
+                                navigatorKey.currentState?.pop();
                               } catch (e) {
+                                if (!ctx.mounted) return;
                                 setStateBs(() => saving = false);
-                                if (ctx.mounted) {
-                                  CsToast.error(ctx, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+                                final rootCtx = navigatorKey.currentContext;
+                                if (rootCtx != null) {
+                                  CsToast.error(rootCtx, l.genericError);
                                 }
                               }
                             },
-                      label: 'Hinzufügen',
+                      label: l.addButton,
                       loading: saving,
                     ),
                   ),
@@ -403,6 +413,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     if (_nicknameDialogShowing) return;
     _nicknameDialogShowing = true;
 
+    final l = AppLocalizations.of(context)!;
     final ctrl = TextEditingController();
     bool saving = false;
     String? errorText;
@@ -415,10 +426,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       backgroundColor: Colors.transparent,
       barrierColor: CsColors.black.withValues(alpha: 0.35),
       sheetAnimationStyle: CsMotion.sheet,
-      builder: (ctx) => StatefulBuilder(
+      builder: (sheetCtx) => StatefulBuilder(
         builder: (ctx, setStateBs) {
-          final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
-          final safeBottom = MediaQuery.of(ctx).padding.bottom;
+          // Use sheetCtx (outer route context) for MediaQuery so the
+          // StatefulBuilder element does NOT register as a MediaQuery
+          // dependent – prevents '_dependents.isEmpty' assertion when
+          // keyboard dismisses during exit animation.
+          final bottomInset = MediaQuery.of(sheetCtx).viewInsets.bottom;
+          final safeBottom = MediaQuery.of(sheetCtx).padding.bottom;
 
           return PopScope(
             canPop: false,
@@ -457,7 +472,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              'Wie heisst du?',
+                              l.whatsYourName,
                               style: CsTextStyles.titleLarge,
                             ),
                           ),
@@ -478,19 +493,19 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Bitte gib deinen Namen ein, damit dein Team dich erkennt.',
+                              l.nicknamePrompt,
                               style: CsTextStyles.bodyMedium,
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'Dein Name im Team',
+                              l.yourTeamName,
                               style: CsTextStyles.labelSmall,
                             ),
                             const SizedBox(height: 6),
                             TextField(
                               controller: ctrl,
                               decoration: InputDecoration(
-                                hintText: 'z.B. Max, Sandro, Martin W.',
+                                hintText: l.nicknameHint,
                                 errorText: errorText,
                                 counterText: '',
                               ),
@@ -529,7 +544,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                 final name = ctrl.text.trim();
                                 if (name.length < 2) {
                                   setStateBs(
-                                    () => errorText = 'Mindestens 2 Zeichen',
+                                    () => errorText = l.minTwoChars,
                                   );
                                   return;
                                 }
@@ -542,16 +557,18 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                     widget.teamId,
                                     name,
                                   );
-                                  if (!mounted) return;
-                                  Navigator.pop(ctx);
+                                  // Use root navigator – ctx may be
+                                  // deactivated after the async gap.
+                                  navigatorKey.currentState?.pop();
                                 } catch (e) {
+                                  if (!ctx.mounted) return;
                                   setStateBs(() {
                                     saving = false;
-                                    errorText = 'Spieler konnte nicht hinzugefügt werden.';
+                                    errorText = l.nicknameSaveError;
                                   });
                                 }
                               },
-                        label: 'Speichern',
+                        label: l.save,
                         loading: saving,
                       ),
                     ),
@@ -567,7 +584,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     _nicknameDialogShowing = false;
 
     if (mounted) {
-      CsToast.success(context, 'Name gespeichert');
+      CsToast.success(context, l.nameSaved);
       _loadMembers().then((_) => _resolveAvatarUrls());
     }
   }
@@ -575,6 +592,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // ── Nickname Edit ────────────────────────────────────────
 
   Future<void> _editNickname(Map<String, dynamic> member) async {
+    final l = AppLocalizations.of(context)!;
     final ctrl = TextEditingController(
       text: member['nickname'] as String? ?? '',
     );
@@ -623,7 +641,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          'Name ändern',
+                          l.changeName,
                           style: CsTextStyles.titleLarge,
                         ),
                       ),
@@ -648,7 +666,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Dein Name im Team',
+                        l.yourTeamName,
                         style: CsTextStyles.labelSmall,
                       ),
                       const SizedBox(height: 6),
@@ -673,7 +691,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   ),
                   child: CsPrimaryButton(
                     onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-                    label: 'Speichern',
+                    label: l.save,
                   ),
                 ),
               ],
@@ -695,10 +713,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       await _loadMembers();
       await _resolveAvatarUrls();
       if (!mounted) return;
-      CsToast.success(context, 'Name aktualisiert');
+      CsToast.success(context, l.nameUpdated);
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Name konnte nicht gespeichert werden.');
+      CsToast.error(context, l.nameSaveError);
     }
   }
 
@@ -736,7 +754,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => member['is_playing'] = previousPlaying);
-      CsToast.error(context, 'Änderung konnte nicht gespeichert werden.');
+      CsToast.error(context, AppLocalizations.of(context)!.changeSaveError);
     } finally {
       _togglingIsPlayer = false;
     }
@@ -745,6 +763,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // ── Invite Share ──────────────────────────────────────────
 
   Future<void> _shareInviteLink() async {
+    final l = AppLocalizations.of(context)!;
     try {
       final token = await InviteService.createInvite(widget.teamId);
       final teamName = widget.team['name'] ?? 'Team';
@@ -756,14 +775,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       print('INVITE_DEEP_LINK=${InviteService.buildDeepLink(token)}');
 
       if (!mounted) return;
-      CsToast.success(context, 'Einladungslink erstellt');
+      CsToast.success(context, l.inviteLinkCreated);
 
-      await Share.share(shareText, subject: 'CourtSwiss Team Invite');
+      await Share.share(shareText, subject: l.shareSubject);
     } catch (e) {
       // ignore: avoid_print
       print('shareInviteLink failed: $e');
       if (!mounted) return;
-      CsToast.error(context, 'Einladungslink konnte nicht erstellt werden.');
+      CsToast.error(context, l.inviteLinkError);
     }
   }
 
@@ -801,16 +820,16 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     return userId ?? '–';
   }
 
-  String _roleLabel(Map<String, dynamic> member) {
+  String _roleLabel(Map<String, dynamic> member, AppLocalizations l) {
     final role = member['role'] as String?;
     final uid = member['user_id'] as String?;
 
     switch (role) {
       case 'captain':
         final plays = uid != null && _claimedMap.containsKey(uid);
-        return plays ? 'Captain (spielend)' : 'Captain';
+        return plays ? l.chipCaptainPlaying : l.chipCaptain;
       case 'member':
-        return 'Spieler';
+        return l.chipPlayer;
       default:
         return role ?? '–';
     }
@@ -943,6 +962,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
 
   Future<void> _changeAvatar() async {
+    final l = AppLocalizations.of(context)!;
     final bucketOk = await AvatarService.checkBucketExists();
     if (!bucketOk) {
       if (!mounted) return;
@@ -969,7 +989,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       }
 
       if (!mounted) return;
-      CsToast.success(context, 'Profilbild aktualisiert');
+      CsToast.success(context, l.avatarUpdated);
 
       _loadMembers().then((_) => _resolveAvatarUrls());
     } on AvatarUploadException catch (e) {
@@ -977,12 +997,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       CsToast.error(context, e.userMessage);
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Bild konnte nicht hochgeladen werden.');
+      CsToast.error(context, l.avatarUploadError);
     }
   }
 
   // ── Bucket Setup Dialog ────────────────────────────────────
   Future<void> _showBucketSetupDialog() async {
+    final l = AppLocalizations.of(context)!;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1026,7 +1047,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Storage Setup erforderlich',
+                        l.storageSetupRequired,
                         style: CsTextStyles.titleLarge,
                       ),
                     ),
@@ -1055,22 +1076,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Der Storage-Bucket "profile-photos" wurde '
-                        'noch nicht angelegt.\n'
-                        'Bitte folge diesen Schritten:',
+                        l.storageSetupBody,
                         style: CsTextStyles.bodyMedium,
                       ),
                       const SizedBox(height: 16),
-                      _setupStep(
-                        '1',
-                        'Supabase Dashboard → Storage → "New bucket"',
-                      ),
-                      _setupStep('2', 'Name exakt: profile-photos'),
-                      _setupStep('3', 'Public: OFF (private)'),
-                      _setupStep(
-                        '4',
-                        'SQL Editor → untenstehende Policies ausführen',
-                      ),
+                      _setupStep('1', l.storageStep1),
+                      _setupStep('2', l.storageStep2),
+                      _setupStep('3', l.storageStep3),
+                      _setupStep('4', l.storageStep4),
                       const SizedBox(height: 16),
                       Container(
                         width: double.infinity,
@@ -1104,9 +1117,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             Clipboard.setData(
                               ClipboardData(text: AvatarService.setupSql),
                             );
-                            CsToast.success(ctx, 'SQL in Zwischenablage kopiert');
+                            CsToast.success(ctx, l.sqlCopied);
                           },
-                          label: 'SQL kopieren',
+                          label: l.copySql,
                           icon: const Icon(Icons.copy, size: 18),
                         ),
                       ),
@@ -1117,7 +1130,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             AvatarService.resetBucketCache();
                             Navigator.pop(ctx);
                           },
-                          label: 'Schliessen',
+                          label: l.closeButton,
                         ),
                       ),
                     ],
@@ -1227,6 +1240,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+    final tabLabels = [l.teamDetailTabOverview, l.teamDetailTabTeam, l.teamDetailTabMatches];
+
     return CsScaffoldList(
       appBar: CsGlassAppBar(
         title: '',
@@ -1236,14 +1252,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             isLabelVisible: _unreadCount > 0,
             child: IconButton(
               icon: const Icon(Icons.notifications_outlined),
-              tooltip: 'Benachrichtigungen',
+              tooltip: l.notificationsTooltip,
               onPressed: _openNotifications,
             ),
           ),
           IconButton(
             onPressed: _shareInviteLink,
             icon: const Icon(Icons.share_outlined),
-            tooltip: 'Einladungslink teilen',
+            tooltip: l.shareInviteTooltip,
           ),
           IconButton(onPressed: _refreshAll, icon: const Icon(Icons.refresh)),
         ],
@@ -1252,7 +1268,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       floatingActionButton: _isAdmin && _tabIndex == 1
           ? FloatingActionButton(
               onPressed: _addPlayerSlotDialog,
-              tooltip: 'Spieler hinzufügen',
+              tooltip: l.addPlayer,
               child: const Icon(Icons.person_add_alt_1),
             )
           : null,
@@ -1263,7 +1279,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
           // ── Segment Tabs ──
           CsSegmentTabs(
-            labels: _tabLabels,
+            labels: tabLabels,
             selectedIndex: _tabIndex,
             onChanged: (i) => setState(() => _tabIndex = i),
           ),
@@ -1298,6 +1314,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // ── Tab 0: Übersicht ──────────────────────────────────────
 
   Widget _buildOverviewTab() {
+    final l = AppLocalizations.of(context)!;
     final claimed = _playerSlots.where((s) => s['claimed_by'] != null).length;
     final total = _playerSlots.length;
 
@@ -1330,9 +1347,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         borderRadius:
                             BorderRadius.circular(CsRadii.full),
                       ),
-                      child: const Text(
-                        'Team Info',
-                        style: TextStyle(
+                      child: Text(
+                        l.teamInfoBadge,
+                        style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: CsColors.white,
@@ -1343,11 +1360,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                _infoRow('Team', widget.team['name']),
-                _infoRow('Club', widget.team['club_name']),
-                _infoRow('Liga', widget.team['league']),
-                _infoRow('Saison', widget.team['season_year']?.toString()),
-                if (!_loading) _infoRow('Kapitän', _captainDisplay()),
+                _infoRow(l.teamInfoTeam, widget.team['name']),
+                _infoRow(l.teamInfoClub, widget.team['club_name']),
+                _infoRow(l.teamInfoLeague, widget.team['league']),
+                _infoRow(l.teamInfoSeason, widget.team['season_year']?.toString()),
+                if (!_loading) _infoRow(l.teamInfoCaptain, _captainDisplay()),
               ],
             ),
           ),
@@ -1368,7 +1385,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               child: Column(
                 children: [
                   CsProgressRow(
-                    label: 'Spieler',
+                    label: l.playersLabel,
                     value: '$total',
                     progress: 1.0,
                     color: CsColors.lime,
@@ -1376,7 +1393,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   ),
                   const SizedBox(height: 12),
                   CsProgressRow(
-                    label: 'Verbunden',
+                    label: l.connectedLabel,
                     value: '$claimed / $total',
                     progress: total > 0 ? claimed / total : 0,
                     color: CsColors.emerald,
@@ -1414,9 +1431,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           borderRadius:
                               BorderRadius.circular(CsRadii.full),
                         ),
-                        child: const Text(
-                          'Nächstes Spiel',
-                          style: TextStyle(
+                        child: Text(
+                          l.nextMatch,
+                          style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                             color: CsColors.white,
@@ -1465,6 +1482,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // ── Tab 1: Spieler ────────────────────────────────────────
 
   Widget _buildPlayersTab() {
+    final l = AppLocalizations.of(context)!;
     final claimed = _playerSlots.where((s) => s['claimed_by'] != null).length;
     final total = _playerSlots.length;
 
@@ -1482,7 +1500,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             child: Column(
               children: [
                 CsProgressRow(
-                  label: 'Spieler',
+                  label: l.playersLabel,
                   value: '$total',
                   progress: 1.0,
                   color: CsColors.lime,
@@ -1490,7 +1508,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ),
                 const SizedBox(height: 12),
                 CsProgressRow(
-                  label: 'Verbunden',
+                  label: l.connectedLabel,
                   value: '$claimed / $total',
                   progress: total > 0 ? claimed / total : 0,
                   color: CsColors.emerald,
@@ -1508,14 +1526,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             children: [
               Expanded(
                 child: CsSectionHeader(
-                  title: 'Team (${_playerSlots.length})',
+                  title: l.teamSectionCount('${_playerSlots.length}'),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                 ),
               ),
               if (_isAdmin)
                 IconButton(
                   icon: const Icon(Icons.person_add_alt_1, size: 20),
-                  tooltip: 'Spieler hinzufügen',
+                  tooltip: l.addPlayer,
                   onPressed: _addPlayerSlotDialog,
                 ),
             ],
@@ -1532,13 +1550,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             children: [
               Expanded(
                 child: CsSectionHeader(
-                  title: 'Team',
+                  title: l.teamDetailTabTeam,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                 ),
               ),
               IconButton(
                 icon: const Icon(Icons.person_add_alt_1, size: 20),
-                tooltip: 'Spieler hinzufügen',
+                tooltip: l.addPlayer,
                 onPressed: _addPlayerSlotDialog,
               ),
             ],
@@ -1550,8 +1568,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Noch keine Spieler vorhanden.\n'
-                    'Füge Spieler mit Name und Ranking hinzu.',
+                    l.noPlayersEmptyBody,
                     style: CsTextStyles.bodySmall,
                   ),
                 ),
@@ -1563,7 +1580,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
         // Members section
         CsSectionHeader(
-          title: 'Verbundene Spieler (${_loading ? '…' : _members.length})',
+          title: l.connectedPlayersTitle(_loading ? '…' : '${_members.length}'),
           padding: const EdgeInsets.symmetric(vertical: 8),
         ),
 
@@ -1578,14 +1595,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 children: [
                   CsEmptyState(
                     icon: Icons.cloud_off_rounded,
-                    title: 'Verbindungsproblem',
-                    subtitle: 'Daten konnten nicht geladen werden.',
+                    title: l.connectionError,
+                    subtitle: l.dataLoadError,
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     onPressed: _loadMembers,
                     icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Nochmal versuchen'),
+                    label: Text(l.tryAgain),
                   ),
                 ],
               ),
@@ -1594,8 +1611,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         else if (_members.isEmpty)
           CsEmptyState(
             icon: Icons.people_outline,
-            title: 'Noch keine Spieler',
-            subtitle: 'Teile den Einladungslink, damit sich Spieler zuordnen können.',
+            title: l.noPlayersYet,
+            subtitle: l.shareInviteSubtitle,
           )
         else
           ...List.generate(_members.length, (i) {
@@ -1611,6 +1628,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // ── Tab 2: Spiele ─────────────────────────────────────────
 
   Widget _buildMatchesTab() {
+    final l = AppLocalizations.of(context)!;
     return ListView(
       key: const ValueKey('matches'),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -1620,9 +1638,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         else if (_matches.isEmpty)
           CsEmptyState(
             icon: Icons.event_outlined,
-            title: 'Noch keine Spiele',
-            subtitle: 'Erstelle ein Spiel, damit dein Team reagieren kann.',
-            ctaLabel: _isAdmin ? 'Spiel erstellen' : null,
+            title: l.noGamesYet,
+            subtitle: l.noMatchesTeamSubtitle,
+            ctaLabel: _isAdmin ? l.createMatch : null,
             onCtaTap: _isAdmin ? _createMatch : null,
           )
         else ...[
@@ -1631,7 +1649,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               padding: const EdgeInsets.only(bottom: 12),
               child: CsPrimaryButton(
                 onPressed: _createMatch,
-                label: 'Spiel erstellen',
+                label: l.createMatch,
                 icon: const Icon(Icons.add, size: 20),
               ),
             ),
@@ -1649,6 +1667,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // ── Settings cards (shown in Übersicht) ──────────────────
 
   List<Widget> _buildSettingsCards() {
+    final l = AppLocalizations.of(context)!;
     final uid = _supabase.auth.currentUser?.id;
     final myMember =
         _members.where((m) => m['user_id'] == uid).firstOrNull;
@@ -1670,18 +1689,18 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Ich spiele selbst',
-                        style: TextStyle(
+                      Text(
+                        l.captainPlaysTitle,
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: CsColors.gray900,
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Aktiviere dies, wenn du als Captain auch spielst und in der Aufstellung erscheinen möchtest.',
-                        style: TextStyle(
+                      Text(
+                        l.captainPlaysSubtitle,
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w400,
                           color: CsColors.gray600,
@@ -1723,9 +1742,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     color: CsColors.gray900,
                   ),
                   const SizedBox(width: 10),
-                  const Text(
-                    'Einladungslink',
-                    style: TextStyle(
+                  Text(
+                    l.inviteLinkTitle,
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: CsColors.gray900,
@@ -1734,9 +1753,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Teile den Einladungslink, damit sich Spieler dem Team anschliessen können.',
-                style: TextStyle(
+              Text(
+                l.inviteLinkDescription,
+                style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w400,
                   color: CsColors.gray600,
@@ -1745,7 +1764,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               const SizedBox(height: 12),
               CsPrimaryButton(
                 onPressed: _shareInviteLink,
-                label: 'Link teilen',
+                label: l.shareLink,
                 icon: const Icon(Icons.share, size: 18),
               ),
             ],
@@ -1759,6 +1778,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // ── Player Slot tiles ───────────────────────────────────
 
   Widget _buildPlayerSlotTile(Map<String, dynamic> slot) {
+    final loc = AppLocalizations.of(context)!;
     final name = TeamPlayerService.playerDisplayName(slot);
     final ranking = TeamPlayerService.rankingLabel(slot);
     final claimedBy = slot['claimed_by'] as String?;
@@ -1824,7 +1844,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 const SizedBox(height: 2),
                 Row(
                   children: [
-                    // Verbunden badge: lime bg + black text
                     if (isClaimed)
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -1835,7 +1854,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               BorderRadius.circular(CsRadii.full),
                         ),
                         child: Text(
-                          isMySlot ? 'Du' : 'Verbunden',
+                          isMySlot ? loc.chipYou : loc.chipConnected,
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -1846,7 +1865,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       )
                     else
                       CsStatusChip(
-                        label: 'Offen',
+                        label: loc.chipOpen,
                         variant: CsChipVariant.neutral,
                       ),
                   ],
@@ -1865,12 +1884,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     _loadPlayerSlots();
                   } catch (e) {
                     if (!mounted) return;
-                    CsToast.error(context, 'Aktion konnte nicht ausgeführt werden.');
+                    CsToast.error(context, loc.actionError);
                   }
                 }
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'delete', child: Text('Entfernen')),
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'delete', child: Text(loc.removePlayer)),
               ],
             ),
         ],
@@ -1881,6 +1900,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // ── Member tile builder ──────────────────────────────────
 
   Widget _buildMemberTile(Map<String, dynamic> m) {
+    final l = AppLocalizations.of(context)!;
     final uid = _supabase.auth.currentUser?.id;
     final memberUid = m['user_id'] as String? ?? '';
     final isMe = memberUid == uid;
@@ -1950,7 +1970,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               BorderRadius.circular(CsRadii.full),
                         ),
                         child: Text(
-                          _roleLabel(m),
+                          _roleLabel(m, l),
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -1961,12 +1981,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       )
                     else
                       CsStatusChip(
-                        label: _roleLabel(m),
+                        label: _roleLabel(m, l),
                         variant: CsChipVariant.neutral,
                       ),
                     if (hasClaimed) ...[
                       const SizedBox(width: 6),
-                      // Zugeordnet badge: black bg + white text
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 4),
@@ -1975,9 +1994,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           borderRadius:
                               BorderRadius.circular(CsRadii.full),
                         ),
-                        child: const Text(
-                          'Zugeordnet',
-                          style: TextStyle(
+                        child: Text(
+                          l.chipAssigned,
+                          style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                             color: CsColors.white,
@@ -2001,7 +2020,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     size: 18,
                     color: CsColors.gray500,
                   ),
-                  tooltip: 'Profilbild ändern',
+                  tooltip: l.changeAvatarTooltip,
                   onPressed: _changeAvatar,
                 ),
                 if (!hasClaimed && _playerSlots.isNotEmpty)
@@ -2011,7 +2030,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       size: 18,
                       color: CsColors.gray500,
                     ),
-                    tooltip: 'Spieler-Slot zuordnen',
+                    tooltip: l.claimSlotTooltip,
                     onPressed: () => _openClaimScreen(),
                   ),
                 if (!hasClaimed && _playerSlots.isEmpty)
@@ -2021,7 +2040,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       size: 18,
                       color: CsColors.gray500,
                     ),
-                    tooltip: 'Name ändern',
+                    tooltip: l.changeNameTooltip,
                     onPressed: () => _editNickname(m),
                   ),
               ],
@@ -2050,6 +2069,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // ── Match tile builder ───────────────────────────────────
 
   Widget _buildMatchTile(Map<String, dynamic> match) {
+    final l = AppLocalizations.of(context)!;
     final isHome = match['is_home'] == true;
     final counts =
         _matchAvailCounts[match['id']] ?? {'yes': 0, 'no': 0, 'maybe': 0};
@@ -2073,7 +2093,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               ),
               const SizedBox(width: 10),
               CsStatusChip(
-                label: isHome ? 'Heim' : 'Auswärts',
+                label: isHome ? l.home : l.away,
                 variant: isHome ? CsChipVariant.info : CsChipVariant.amber,
               ),
               const Spacer(),

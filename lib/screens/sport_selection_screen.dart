@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../models/sport.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/ui/ui.dart';
@@ -9,8 +10,9 @@ class SportSelectionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return CsScaffold(
-      appBar: const CsGlassAppBar(title: 'Sportart wählen'),
+      appBar: CsGlassAppBar(title: l.sportSelectionTitle),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Column(
@@ -20,7 +22,7 @@ class SportSelectionScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 16, left: 4),
               child: Text(
-                'Welche Sportart spielt dein Team?',
+                l.sportSelectionSubtitle,
                 style: CsTextStyles.titleMedium,
               ),
             ),

@@ -1,0 +1,693 @@
+{
+  "@@locale": "en",
+
+  "tabTeams": "Teams",
+  "tabGames": "Games",
+  "tabProfile": "Profile",
+
+  "profileTitle": "Profile",
+  "anonymousPlayer": "Anonymous Player",
+  "notLoggedIn": "Not logged in",
+  "loggedIn": "Logged in",
+  "pushNotifications": "Push Notifications",
+  "pushToggleSubtitle": "Toggle all push notifications",
+  "individualNotifications": "Individual Notifications",
+  "pushInfoBanner": "Push notifications will be activated soon. Your settings are already being saved.",
+  "createAccountHint": "Create an account to make your own teams and secure your profile.",
+  "registerLogin": "Register / Log in",
+  "logout": "Log out",
+  "appVersion": "Lineup · v1.0.0",
+  "prefsLoadError": "Settings could not be loaded.",
+  "prefsSaveError": "Settings could not be saved.",
+  "languageTitle": "Language",
+  "german": "Deutsch",
+  "english": "English",
+
+  "myTeams": "My Teams",
+  "notifications": "Notifications",
+  "howItWorks": "How it works",
+  "guideStep1": "Create your team using the + at the bottom right.",
+  "guideStep2": "Add players – with name and optional ranking.",
+  "guideStep3": "Share the invite link via WhatsApp.",
+  "guideStep4": "Players open the link and assign themselves to their name.",
+  "guideStep5": "As captain you can see who is already connected.",
+  "guideStep6": "Create matches – the lineup is sorted by ranking.",
+  "welcomeTitle": "Welcome to {appName}",
+  "@welcomeTitle": {
+    "placeholders": {
+      "appName": { "type": "String" }
+    }
+  },
+  "welcomeSubtitle": "Create your first team and invite players.",
+  "understood": "Got it",
+  "accountRequired": "Account required",
+  "accountRequiredBody": "You need an account to create your own teams. Please register or log in.",
+  "cancel": "Cancel",
+  "deleteTeamTitle": "Delete team?",
+  "deleteTeamBody": "Do you want to permanently delete \"{teamName}\"? This cannot be undone.",
+  "delete": "Delete",
+  "teamDeleted": "Team \"{teamName}\" deleted",
+  "teamDeleteError": "Team could not be deleted.",
+  "removeTeamTitle": "Remove team?",
+  "removeTeamBody": "You are removing \"{teamName}\" from your list only. The team remains for the captain and other members.",
+  "remove": "Remove",
+  "teamRemoved": "Team \"{teamName}\" removed",
+  "teamRemoveError": "Team could not be removed.",
+  "ownTeams": "My Teams",
+  "sharedTeams": "Shared Teams",
+  "connectionError": "Connection problem",
+  "dataLoadError": "Data could not be loaded.",
+  "tryAgain": "Try again",
+  "season": "Season {year}",
+
+  "gamesTitle": "Games",
+  "refresh": "Refresh",
+  "noGamesYet": "No games yet",
+  "noGamesSubtitle": "Create your first match in a team.",
+  "home": "Home",
+  "away": "Away",
+
+  "authWelcome": "Welcome",
+  "authSubtitle": "Your team. Your matches.",
+  "login": "Log in",
+  "register": "Register",
+  "email": "Email",
+  "password": "Password",
+  "forgotPassword": "Forgot password?",
+  "confirmPassword": "Confirm password",
+  "passwordHint": "Min. 8 characters with at least 1 number",
+  "passwordMinLength": "At least 8 characters",
+  "passwordNeedsNumber": "At least 1 number required",
+  "invalidEmail": "Please enter a valid email address.",
+  "enterPassword": "Please enter a password.",
+  "passwordsMismatch": "Passwords do not match.",
+  "loginFailed": "Login failed. Please try again.",
+  "registerFailed": "Registration failed. Please try again.",
+  "invalidCredentials": "Invalid email or password.",
+  "emailNotConfirmed": "Email not yet confirmed. Please check your inbox.",
+  "emailAlreadyRegistered": "This email is already registered. Please log in.",
+  "rateLimited": "Too many attempts. Please wait a moment.",
+  "errorPrefix": "Error: {message}",
+
+  "verificationPendingTitle": "Check your email",
+  "verificationPendingBody": "If an account with this email exists, we\u2019ve sent you a confirmation email. Please check your inbox and spam folder.",
+  "resendConfirmationEmail": "Resend confirmation email",
+  "resendEmailSuccess": "Email sent (if the address is eligible).",
+  "resendEmailRateLimit": "Please wait a few minutes and try again.",
+  "alreadyHaveAccountLogin": "Already have an account? Log in",
+
+  "save": "Save",
+  "matchDetails": "Match Details",
+  "opponent": "Opponent *",
+  "opponentHint": "e.g. TC Zurich",
+  "pleaseComplete": "Please fill in",
+  "dateAndTime": "Date & Time",
+  "chooseDate": "Choose date",
+  "chooseTime": "Choose time",
+  "homeGame": "Home game",
+  "awayGame": "Away game",
+  "details": "Details",
+  "location": "Location",
+  "locationHint": "e.g. Tennis Club Bern, Court 3",
+  "noteOptional": "Note (optional)",
+  "noteHint": "e.g. Meeting point 09:30",
+  "chooseDateAndTime": "Please choose date and time",
+  "editMatch": "Edit match",
+  "addMatch": "Add match",
+  "saveChanges": "Save changes",
+  "createMatch": "Create match",
+  "matchUpdated": "Match updated",
+  "matchCreated": "Match created",
+  "matchCreateError": "Match could not be created. Please try again.",
+
+  "lineupPublished": "Lineup published",
+  "replacementPromoted": "Replacement promoted",
+  "noReserveAvailable": "No reserve available",
+
+  "accountSectionTitle": "Account",
+  "deleteAccount": "Delete account",
+  "deleteAccountTitle": "Delete account?",
+  "deleteAccountBody": "Your account and all associated data will be permanently deleted. This action cannot be undone.",
+  "typeToConfirm": "Type \"{confirmWord}\" to confirm",
+  "confirmWordDelete": "DELETE",
+  "deleting": "Deleting\u2026",
+  "accountDeleted": "Account deleted",
+  "accountDeleteError": "Account could not be deleted. Please try again.",
+
+  "teamDetailTabOverview": "Overview",
+  "teamDetailTabTeam": "Team",
+  "teamDetailTabMatches": "Matches",
+
+  "teamInfoBadge": "Team Info",
+  "teamInfoTeam": "Team",
+  "teamInfoClub": "Club",
+  "teamInfoLeague": "League",
+  "teamInfoSeason": "Season",
+  "teamInfoCaptain": "Captain",
+
+  "nextMatch": "Next match",
+
+  "playersLabel": "Players",
+  "connectedLabel": "Connected",
+
+  "captainPlaysTitle": "I play myself",
+  "captainPlaysSubtitle": "Enable this if you also play as captain and want to appear in the lineup.",
+
+  "inviteLinkTitle": "Invite link",
+  "inviteLinkDescription": "Share the invite link so players can join the team.",
+  "shareLink": "Share link",
+  "inviteLinkCreated": "Invite link created",
+  "inviteLinkError": "Invite link could not be created.",
+  "shareInviteTooltip": "Share invite link",
+  "shareSubject": "Lineup Team Invite",
+
+  "teamSectionCount": "Team ({count})",
+  "@teamSectionCount": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "connectedPlayersTitle": "Connected players ({count})",
+  "@connectedPlayersTitle": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+
+  "addPlayer": "Add player",
+  "firstName": "First name *",
+  "firstNameHint": "Max",
+  "lastName": "Last name *",
+  "lastNameHint": "Smith",
+  "enterFirstAndLastName": "Please enter first and last name.",
+  "selectRanking": "Please select a ranking.",
+  "genericError": "Something went wrong. Please try again.",
+  "addButton": "Add",
+
+  "whatsYourName": "What\u2019s your name?",
+  "nicknamePrompt": "Please enter your name so your team can recognize you.",
+  "yourTeamName": "Your name in team",
+  "nicknameHint": "e.g. Max, Sandro, Martin W.",
+  "minTwoChars": "At least 2 characters",
+  "nicknameSaveError": "Player could not be added.",
+  "nameSaved": "Name saved",
+
+  "changeName": "Change name",
+  "nameUpdated": "Name updated",
+  "nameSaveError": "Name could not be saved.",
+
+  "changeSaveError": "Change could not be saved.",
+
+  "noPlayersYet": "No players yet",
+  "noPlayersEmptyBody": "No players yet.\nAdd players with name and ranking.",
+  "shareInviteSubtitle": "Share the invite link so players can assign themselves.",
+  "noMatchesTeamSubtitle": "Create a match so your team can respond.",
+
+  "chipOpen": "Open",
+  "chipAssigned": "Assigned",
+  "chipYou": "You",
+  "chipConnected": "Connected",
+  "chipCaptain": "Captain",
+  "chipCaptainPlaying": "Captain (playing)",
+  "chipPlayer": "Player",
+
+  "changeAvatarTooltip": "Change profile picture",
+  "claimSlotTooltip": "Assign player slot",
+  "changeNameTooltip": "Change name",
+
+  "actionError": "Action could not be performed.",
+
+  "avatarUpdated": "Profile picture updated",
+  "avatarUploadError": "Image could not be uploaded.",
+
+  "storageSetupRequired": "Storage setup required",
+  "storageSetupBody": "The storage bucket \"profile-photos\" has not been created yet.\nPlease follow these steps:",
+  "storageStep1": "Supabase Dashboard \u2192 Storage \u2192 \"New bucket\"",
+  "storageStep2": "Name exactly: profile-photos",
+  "storageStep3": "Public: OFF (private)",
+  "storageStep4": "SQL Editor \u2192 run the policies below",
+  "sqlCopied": "SQL copied to clipboard",
+  "copySql": "Copy SQL",
+  "closeButton": "Close",
+  "notificationsTooltip": "Notifications",
+  "removePlayer": "Remove",
+
+  "matchTabOverview": "Overview",
+  "matchTabLineup": "Lineup",
+  "matchTabMore": "More",
+
+  "editLabel": "Edit",
+
+  "matchConfirmedProgress": "{yes} of {total} confirmed",
+  "@matchConfirmedProgress": {
+    "placeholders": {
+      "yes": { "type": "String" },
+      "total": { "type": "String" }
+    }
+  },
+
+  "myAvailability": "My availability",
+  "availYes": "Confirmed",
+  "availNo": "Declined",
+  "availMaybe": "Maybe",
+  "availNoResponse": "No response",
+  "availabilitiesTitle": "Availabilities",
+  "respondedProgress": "{responded} of {total} responded",
+  "@respondedProgress": {
+    "placeholders": {
+      "responded": { "type": "String" },
+      "total": { "type": "String" }
+    }
+  },
+  "playerAvailabilities": "Player availabilities",
+
+  "subRequestSection": "Substitution",
+  "noSubRequests": "No substitute requests. For declines you can request a substitute here.",
+
+  "generateLineupTitle": "Generate lineup",
+  "generateButton": "Generate",
+  "lineupGenerateDescription": "The lineup will be generated based on rankings and availabilities.\nYou can swap manually afterwards.\n\nAn existing lineup will be overwritten.",
+  "starterLabel": "Starters",
+  "reserveLabel": "Reserves",
+  "includeMaybeTitle": "Include maybes",
+  "includeMaybeSubtitle": "Players with \"Maybe\" will be added to fill spots.",
+  "lineupCreatedToast": "Lineup created: {starters} starters, {reserves} reserves",
+  "@lineupCreatedToast": {
+    "placeholders": {
+      "starters": { "type": "String" },
+      "reserves": { "type": "String" }
+    }
+  },
+
+  "lineupTitle": "Lineup",
+  "lineupStatusDraft": "Draft",
+  "lineupStatusPublished": "Published",
+  "allSlotsOccupied": "All slots occupied",
+  "slotsFreeSingle": "1 slot available",
+  "slotsFree": "{count} slots available",
+  "@slotsFree": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "regenerateButton": "Regenerate",
+  "noLineupYet": "No lineup yet.",
+  "noLineupYetAdmin": "No lineup yet.\nTap \"Generate\" to create one.",
+  "captainCreatingLineup": "Captain is creating the lineup \u2026",
+  "subChainActive": "Sub chain active: When a player declines, the next reserve is promoted automatically.",
+  "starterCountHeader": "Starters ({count})",
+  "@starterCountHeader": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "reserveCountHeader": "Reserves ({count})",
+  "@reserveCountHeader": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "sendLineupToTeam": "Send to team",
+  "lineupPublishedBanner": "Lineup published. Declines trigger automatic promotion.",
+  "youStarter": "You \u00b7 Starter",
+  "youReserve": "You \u00b7 Reserve",
+
+  "publishLineupTitle": "Publish lineup?",
+  "publishSendButton": "Send",
+  "publishLineupBody": "All team members will be notified about the lineup (in-app + push).",
+  "publishLineupConfirm": "Do you want to send the lineup now?",
+  "lineupPublishedToast": "Lineup published \u2013 {recipients} notifications sent",
+  "@lineupPublishedToast": {
+    "placeholders": {
+      "recipients": { "type": "String" }
+    }
+  },
+
+  "violationSingle": "\u26a0\ufe0f 1 rule violation detected",
+  "violationMultiple": "\u26a0\ufe0f {count} rule violations detected",
+  "@violationMultiple": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "violationMore": "\u2026 and {count} more",
+  "@violationMore": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "publishAnyway": "Publishing still possible.",
+
+  "lineupPublishedNoReorder": "Lineup is published \u2013 order can no longer be changed.",
+  "lineupBeingGenerated": "Generating lineup \u2026",
+  "lineupBeingPublished": "Publishing lineup \u2026",
+  "reorderNotPossible": "Reordering is not possible right now.",
+
+  "deleteMatchTitle": "Delete match?",
+  "deleteMatchBody": "Do you really want to delete the match vs \"{opponent}\"?\n\nAll availabilities and lineups will be lost.",
+  "@deleteMatchBody": {
+    "placeholders": {
+      "opponent": { "type": "String" }
+    }
+  },
+  "matchDeleted": "Match deleted",
+
+  "subRequestSentToast": "Substitute request sent to {name}",
+  "@subRequestSentToast": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "noSubAvailable": "No available substitute found.",
+  "subRequestAcceptedToast": "Substitute request accepted",
+  "subRequestDeclinedToast": "Substitute request declined",
+  "somethingWentWrong": "Something went wrong.",
+
+  "subRequestsTitle": "Substitute requests",
+  "pendingCountChip": "{count} pending",
+  "@pendingCountChip": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "pendingRequestsLabel": "Pending requests",
+  "youWereAsked": "You were asked:",
+  "subForPlayer": "Substitute for {name}",
+  "@subForPlayer": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "canYouStepIn": "Can you step in?",
+  "timeExpired": "Time expired",
+  "acceptTooltip": "Accept",
+  "declineTooltip": "Decline",
+  "requestHistory": "Request history:",
+  "subForPlayerHistory": "{subName} for {originalName}",
+  "@subForPlayerHistory": {
+    "placeholders": {
+      "subName": { "type": "String" },
+      "originalName": { "type": "String" }
+    }
+  },
+  "chipWaiting": "Waiting for response",
+  "chipAccepted": "Accepted",
+  "chipDeclined": "Declined",
+  "subButton": "Sub",
+
+  "sectionRides": "Rides",
+  "carpoolsTitle": "Carpools",
+  "iDriveButton": "I'm driving",
+  "noCarpoolsYet": "No carpools yet.",
+  "noCarpoolsHint": "No carpools yet. Offer a ride.",
+  "youSuffix": "(you)",
+  "joinRideButton": "Join ride",
+  "leaveRideButton": "Leave ride",
+  "joinedRideToast": "You joined the ride",
+  "joinRideError": "Could not save ride.",
+  "leftRideToast": "Left the ride",
+  "leaveRideError": "Could not save leaving.",
+  "deleteCarpoolTitle": "Delete carpool?",
+  "deleteCarpoolBody": "All passengers will be removed.",
+  "editCarpoolTitle": "Edit carpool",
+  "seatsQuestion": "How many seats do you offer?",
+  "departureLocationLabel": "Departure location",
+  "departureLocationHint": "e.g. Bern station",
+  "departureTimeWithValue": "Departure: {time}",
+  "@departureTimeWithValue": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "departureTimeOptional": "Departure time (optional)",
+  "changeTooltip": "Change",
+  "setTooltip": "Set",
+  "removeTooltipLabel": "Remove",
+  "carpoolNoteHint": "e.g. Meeting point parking lot",
+  "carpoolSavedToast": "Carpool saved",
+  "carpoolCreatedReloadToast": "Carpool created. Please reload the page.",
+  "departAtFormat": "{date} at {time}",
+  "@departAtFormat": {
+    "placeholders": {
+      "date": { "type": "String" },
+      "time": { "type": "String" }
+    }
+  },
+
+  "sectionDinner": "Dinner",
+  "answeredOfTotal": "{answered} of {total}",
+  "@answeredOfTotal": {
+    "placeholders": {
+      "answered": { "type": "String" },
+      "total": { "type": "String" }
+    }
+  },
+  "yourRsvp": "Your RSVP",
+  "dinnerYes": "Yes",
+  "dinnerNo": "No",
+  "dinnerMaybe": "Maybe",
+  "dinnerNoteHint": "Note (e.g. \"arriving late\")",
+  "dinnerSaveError": "Could not save. Please try again.",
+  "participantsTitle": "Participants",
+
+  "sectionExpenses": "Expenses",
+  "expenseTotal": "Total",
+  "perPersonLabel": "Per person ({count} pers.)",
+  "@perPersonLabel": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "paidLabel": "Paid",
+  "firstConfirmDinner": "First confirm under \"Dinner\" before expenses can be recorded.",
+  "addExpenseButton": "Add expense",
+  "noExpensesYet": "No expenses recorded yet. Add a new expense.",
+  "noExpensesPossible": "No expenses possible yet. First confirm under \"Dinner\".",
+  "paidByLabel": "Paid by {name}",
+  "@paidByLabel": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "perPersonAmountLabel": "{amount}/pers.",
+  "@perPersonAmountLabel": {
+    "placeholders": {
+      "amount": { "type": "String" }
+    }
+  },
+  "paidOfShareCount": "{paid}/{total} paid",
+  "@paidOfShareCount": {
+    "placeholders": {
+      "paid": { "type": "String" },
+      "total": { "type": "String" }
+    }
+  },
+  "sharePaid": "Paid",
+  "shareOpen": "Open",
+  "deleteExpenseTooltip": "Delete expense",
+  "markedAsPaid": "Marked as paid",
+  "markedAsOpen": "Marked as open",
+  "expenseTitleField": "Title *",
+  "expenseTitleHint": "e.g. Pizza, drinks",
+  "expenseAmountField": "Amount (CHF) *",
+  "expenseAmountHint": "e.g. 45.50",
+  "currencyPrefix": "CHF ",
+  "expenseNoteHint": "e.g. Restaurant Adler",
+  "expenseDistribution": "Will be split equally among all {count} dinner attendees (Yes).",
+  "@expenseDistribution": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "enterTitleValidation": "Please enter a title.",
+  "enterAmountValidation": "Please enter a valid amount.",
+  "expenseCreatedToast": "Expense \"{title}\" (CHF {amount}) created",
+  "@expenseCreatedToast": {
+    "placeholders": {
+      "title": { "type": "String" },
+      "amount": { "type": "String" }
+    }
+  },
+  "deleteExpenseTitle": "Delete expense?",
+  "deleteExpenseBody": "\"{title}\" ({amount}) and all shares will be deleted.",
+  "@deleteExpenseBody": {
+    "placeholders": {
+      "title": { "type": "String" },
+      "amount": { "type": "String" }
+    }
+  },
+  "expenseDeletedToast": "Expense \"{title}\" deleted",
+  "@expenseDeletedToast": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+
+  "roleCaptainSuffix": " (Captain)",
+  "unknownPlayer": "Unknown",
+
+  "lineupReorderHint": "Hold \u2630 and drag to swap positions",
+
+  "claimConfirmTitle": "Confirm player",
+  "claimConfirmCta": "Yes, that's me",
+  "claimConfirmBody": "Are you \"{label}\"?",
+  "@claimConfirmBody": {
+    "placeholders": {
+      "label": { "type": "String" }
+    }
+  },
+  "claimWelcomeToast": "Welcome, {name}!",
+  "@claimWelcomeToast": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "claimWhoAreYou": "Who are you?",
+  "commonSkip": "Skip",
+  "claimPickName": "Select your name from the list\nso the team can assign you.",
+  "claimSearchHint": "Search name\u2026",
+  "claimNoSlotTitle": "No open slot",
+  "claimNoSlotBody": "Your captain hasn't added any players yet\nor all slots are already taken.",
+
+  "notifLoadError": "Couldn't load notifications.",
+  "matchLoadError": "Couldn't load match.",
+  "notifTitleWithCount": "Notifications ({count})",
+  "@notifTitleWithCount": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "markAllRead": "Mark all read",
+  "allReadTitle": "All read",
+  "allReadSubtitle": "New notifications will appear here automatically.",
+
+  "timeJustNow": "just now",
+  "timeMinutesAgo": "{minutes} min ago",
+  "@timeMinutesAgo": {
+    "placeholders": {
+      "minutes": { "type": "String" }
+    }
+  },
+  "timeHoursAgo": "{hours}h ago",
+  "@timeHoursAgo": {
+    "placeholders": {
+      "hours": { "type": "String" }
+    }
+  },
+  "timeDaysAgo": "{days}d ago",
+  "@timeDaysAgo": {
+    "placeholders": {
+      "days": { "type": "String" }
+    }
+  },
+
+  "forgotPasswordAppBar": "Forgot password",
+  "resetPasswordTitle": "Reset password",
+  "resetPasswordInstructions": "Enter your email address and we'll send you a reset link.",
+  "emailSentTitle": "Email sent!",
+  "resetPasswordSentBody": "Check your inbox and click the link to set a new password.",
+  "backToSignIn": "Back to sign in",
+  "sendLinkButton": "Send link",
+  "emailSendError": "Couldn't send email.",
+
+  "sportSelectionTitle": "Choose sport",
+  "sportSelectionSubtitle": "What sport does your team play?",
+
+  "eventsLoadError": "Couldn't load events.",
+  "matchUnavailableDeleted": "Match unavailable (deleted or archived).",
+  "matchUnavailable": "Match unavailable.",
+  "noNewEvents": "No new events",
+  "noNewEventsSubtitle": "When there's news, you'll see it here.",
+  "teamFilterLabel": "Team filter",
+  "allTeams": "All teams",
+
+  "createTeamTitle": "Create team",
+  "teamNameLabel": "Club Name / Team Name *",
+  "teamNameHint": "e.g. TC Winterthur 1",
+  "leagueLabel": "League (optional)",
+  "leagueHint": "e.g. 3rd League Men",
+  "seasonYearLabel": "Season year",
+  "captainNameRequired": "Your name in team *",
+  "captainNamePrompt": "Your name, so your team recognizes you.",
+  "createTeamPlaysSelfSubtitle": "Enable this if you also play as captain.",
+  "createButton": "Create",
+  "teamCreatedToast": "Team created",
+  "teamCreateError": "Couldn't create team. Please try again.",
+  "enterTeamName": "Please enter team name.",
+  "enterCaptainName": "Please enter your name (min. 2 characters).",
+  "invalidSeasonYear": "Please enter a valid season year.",
+  "selectRankingError": "Please select ranking.",
+
+  "countryLabel": "Country *",
+  "rankingLabelRequired": "Ranking *",
+  "rankingAvailableSection": "Available",
+  "dropdownHint": "Please select",
+
+  "notifTitleLineup": "Lineup",
+  "notifTitleSubRequest": "Sub request",
+  "notifTitlePromotion": "Promoted",
+  "notifTitleAutoPromotion": "Auto-promotion",
+  "notifTitleLineupGenerated": "Lineup generated",
+  "notifTitleConfirmation": "Confirmation",
+  "notifTitleWarning": "Warning",
+  "notifTitlePromoted": "Promotion",
+
+  "notifBodyLineupOnline": "The lineup is online. Check it out!",
+  "notifBodySelectedAs": "You were placed as {role} (Pos. {position})",
+  "@notifBodySelectedAs": {
+    "placeholders": {
+      "role": { "type": "String" },
+      "position": { "type": "String" }
+    }
+  },
+  "notifBodyReserveConfirm": "You are reserve {position}. Please confirm.",
+  "@notifBodyReserveConfirm": {
+    "placeholders": {
+      "position": { "type": "String" }
+    }
+  },
+  "notifBodyPromotedToStarter": "You were promoted to starter (Pos. {position}) \ud83c\udf89",
+  "@notifBodyPromotedToStarter": {
+    "placeholders": {
+      "position": { "type": "String" }
+    }
+  },
+  "notifBodyAutoPromoted": "You were promoted as reserve and are now playing \ud83c\udf89",
+  "notifBodyAutoPromotionCaptain": "Auto-promotion: {inName} replaces {outName}",
+  "@notifBodyAutoPromotionCaptain": {
+    "placeholders": {
+      "inName": { "type": "String" },
+      "outName": { "type": "String" }
+    }
+  },
+  "notifBodyNoReserve": "{absent} declined \u2013 no reserve available!",
+  "@notifBodyNoReserve": {
+    "placeholders": {
+      "absent": { "type": "String" }
+    }
+  },
+  "notifBodyLineupCreated": "Lineup created: {starters} starters, {reserves} reserves",
+  "@notifBodyLineupCreated": {
+    "placeholders": {
+      "starters": { "type": "String" },
+      "reserves": { "type": "String" }
+    }
+  },
+  "notifBodyPlayerConfirmed": "A player has confirmed",
+  "notifBodyNoReservesLeft": "No more reserves available!",
+  "notifBodyPromotedToPos": "You were promoted to starter (Pos. {position}) \ud83c\udf89",
+  "@notifBodyPromotedToPos": {
+    "placeholders": {
+      "position": { "type": "String" }
+    }
+  },
+  "notifBodyRosterChanged": "The lineup has been changed",
+  "notifBodyNeedsResponse": "Please confirm your lineup",
+  "eventBodyReplaced": "{inName} replaces {outName}",
+  "@eventBodyReplaced": {
+    "placeholders": {
+      "inName": { "type": "String" },
+      "outName": { "type": "String" }
+    }
+  }
+}

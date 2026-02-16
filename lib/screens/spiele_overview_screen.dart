@@ -5,6 +5,7 @@
 // ──────────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../services/match_service.dart';
 import '../services/team_service.dart';
 import '../theme/cs_theme.dart';
@@ -27,18 +28,20 @@ class _SpieleOverviewScreenState extends State<SpieleOverviewScreen> {
   void initState() {
     super.initState();
     _load();
-    // Reload when a team is deleted (or structurally changed)
-    TeamService.teamChangeNotifier.addListener(_onTeamChanged);
+    // Reload when a team is deleted/left or a match is created/deleted
+    TeamService.teamChangeNotifier.addListener(_onDataChanged);
+    MatchService.matchChangeNotifier.addListener(_onDataChanged);
   }
 
   @override
   void dispose() {
-    TeamService.teamChangeNotifier.removeListener(_onTeamChanged);
+    TeamService.teamChangeNotifier.removeListener(_onDataChanged);
+    MatchService.matchChangeNotifier.removeListener(_onDataChanged);
     super.dispose();
   }
 
-  void _onTeamChanged() {
-    // Team was deleted → reload matches from DB
+  void _onDataChanged() {
+    // Team or match changed → reload matches from DB
     _load();
   }
 
@@ -93,15 +96,17 @@ class _SpieleOverviewScreenState extends State<SpieleOverviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+
     return CsScaffoldList(
       appBar: CsGlassAppBar(
-        title: 'Spiele',
+        title: l.gamesTitle,
         automaticallyImplyLeading: false,
         actions: [
           IconButton(
             onPressed: _load,
             icon: const Icon(Icons.refresh),
-            tooltip: 'Aktualisieren',
+            tooltip: l.refresh,
           ),
         ],
       ),
@@ -120,24 +125,23 @@ class _SpieleOverviewScreenState extends State<SpieleOverviewScreen> {
                     children: [
                       CsEmptyState(
                         icon: Icons.cloud_off_rounded,
-                        title: 'Verbindungsproblem',
-                        subtitle: 'Daten konnten nicht geladen werden.',
+                        title: l.connectionError,
+                        subtitle: l.dataLoadError,
                       ),
                       const SizedBox(height: 12),
                       FilledButton.icon(
                         onPressed: _load,
                         icon: const Icon(Icons.refresh, size: 18),
-                        label: const Text('Nochmal versuchen'),
+                        label: Text(l.tryAgain),
                       ),
                     ],
                   ),
                 )
               : _matches.isEmpty
-                  ? const CsEmptyState(
+                  ? CsEmptyState(
                       icon: Icons.event_outlined,
-                      title: 'Noch keine Spiele',
-                      subtitle:
-                          'Erstelle dein erstes Spiel in einem Team.',
+                      title: l.noGamesYet,
+                      subtitle: l.noGamesSubtitle,
                     )
                   : ListView.builder(
                       padding:
@@ -156,6 +160,7 @@ class _SpieleOverviewScreenState extends State<SpieleOverviewScreen> {
   // ── Match tile (mirrors TeamDetailScreen style) ─────────
 
   Widget _buildMatchTile(Map<String, dynamic> match) {
+    final l = AppLocalizations.of(context)!;
     final isHome = match['is_home'] == true;
     final teamName = match['team_name'] as String? ?? '–';
 
@@ -180,7 +185,7 @@ class _SpieleOverviewScreenState extends State<SpieleOverviewScreen> {
               ),
               const SizedBox(width: 10),
               CsStatusChip(
-                label: isHome ? 'Heim' : 'Auswärts',
+                label: isHome ? l.home : l.away,
                 variant:
                     isHome ? CsChipVariant.info : CsChipVariant.amber,
               ),

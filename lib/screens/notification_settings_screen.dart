@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../services/push_prefs_service.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/ui/ui.dart';
@@ -18,6 +19,7 @@ class NotificationSettingsScreen extends StatefulWidget {
 
 class _NotificationSettingsScreenState
     extends State<NotificationSettingsScreen> {
+  late AppLocalizations l;
   bool _loading = true;
   bool _pushEnabled = true;
   List<String> _typesDisabled = [];
@@ -26,6 +28,12 @@ class _NotificationSettingsScreenState
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    l = AppLocalizations.of(context)!;
   }
 
   Future<void> _load() async {
@@ -43,7 +51,7 @@ class _NotificationSettingsScreenState
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      CsToast.error(context, 'Einstellungen konnten nicht geladen werden.');
+      CsToast.error(context, l.prefsLoadError);
     }
   }
 
@@ -76,7 +84,7 @@ class _NotificationSettingsScreenState
     } catch (_) {
       if (!mounted) return;
       rollback();
-      CsToast.error(context, 'Einstellungen konnten nicht gespeichert werden.');
+      CsToast.error(context, l.prefsSaveError);
     }
   }
 
@@ -85,7 +93,7 @@ class _NotificationSettingsScreenState
   @override
   Widget build(BuildContext context) {
     return CsScaffoldList(
-      appBar: const CsGlassAppBar(title: 'Benachrichtigungen'),
+      appBar: CsGlassAppBar(title: l.notifications),
       body: _loading
           ? Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
@@ -118,7 +126,7 @@ class _NotificationSettingsScreenState
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Push-Benachrichtigungen',
+                                l.pushNotifications,
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
@@ -127,7 +135,7 @@ class _NotificationSettingsScreenState
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Alle Push-Nachrichten ein/aus',
+                                l.pushToggleSubtitle,
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: CsColors.gray500,
@@ -165,7 +173,7 @@ class _NotificationSettingsScreenState
                         Padding(
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Text(
-                            'Einzelne Benachrichtigungen',
+                            l.individualNotifications,
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -203,7 +211,7 @@ class _NotificationSettingsScreenState
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
-                                        PushPrefsService.eventTypeLabel(type),
+                                        _eventTypeLabel(type),
                                         style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w500,
@@ -254,8 +262,7 @@ class _NotificationSettingsScreenState
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Push-Nachrichten werden in Kürze aktiviert. '
-                            'Deine Einstellungen werden bereits gespeichert.',
+                            l.pushInfoBanner,
                             style: TextStyle(
                               fontSize: 13,
                               color: CsColors.gray700,
@@ -270,6 +277,19 @@ class _NotificationSettingsScreenState
               ],
             ),
     );
+  }
+
+  String _eventTypeLabel(String type) {
+    switch (type) {
+      case 'lineup_published':
+        return l.lineupPublished;
+      case 'replacement_promoted':
+        return l.replacementPromoted;
+      case 'no_reserve_available':
+        return l.noReserveAvailable;
+      default:
+        return type;
+    }
   }
 
   IconData _eventIcon(String type) {

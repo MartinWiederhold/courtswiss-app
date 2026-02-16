@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../l10n/app_localizations.dart';
 import '../models/sport.dart';
 import '../services/team_service.dart';
 import '../services/event_service.dart';
 import '../theme/cs_theme.dart';
+import '../constants/app_constants.dart';
 import '../widgets/ui/ui.dart';
 import 'auth_screen.dart';
 import 'create_team_screen.dart';
@@ -59,24 +61,27 @@ class _TeamsScreenState extends State<TeamsScreen> {
   //  Quick-Start Guide
   // ═══════════════════════════════════════════════════════════
 
-  static const _guideSteps = [
-    'Erstelle dein Team über das + unten rechts.',
-    'Füge Spieler hinzu – mit Name und optionalem Ranking.',
-    'Teile den Einladungslink per WhatsApp.',
-    'Spieler öffnen den Link und ordnen sich ihrem Namen zu.',
-    'Du siehst als Captain, wer bereits verbunden ist.',
-    'Erstelle Spiele – die Aufstellung wird nach Ranking sortiert.',
+  List<String> _guideSteps(AppLocalizations l) => [
+    l.guideStep1,
+    l.guideStep2,
+    l.guideStep3,
+    l.guideStep4,
+    l.guideStep5,
+    l.guideStep6,
   ];
 
   /// Builds the numbered guide list (used in the empty-state card).
   Widget _buildGuideContent({bool showTitle = true}) {
+    final l = AppLocalizations.of(context)!;
+    final steps = _guideSteps(l);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         if (showTitle) ...[
           Text(
-            'So funktioniert\'s',
+            l.howItWorks,
             style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 17,
@@ -85,7 +90,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
           ),
           const SizedBox(height: 12),
         ],
-        ...List.generate(_guideSteps.length, (i) {
+        ...List.generate(steps.length, (i) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Row(
@@ -111,7 +116,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    _guideSteps[i],
+                    steps[i],
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.4,
@@ -128,6 +133,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   Widget _buildEmptyState() {
+    final l = AppLocalizations.of(context)!;
+
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -150,21 +157,20 @@ class _TeamsScreenState extends State<TeamsScreen> {
             ),
             const SizedBox(height: 20),
             Text(
-              'Willkommen bei CourtSwiss',
+              l.welcomeTitle(kAppName),
               style: CsTextStyles.titleLarge,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Erstelle dein erstes Team und lade Spieler ein.',
+              l.welcomeSubtitle,
               style: CsTextStyles.bodyMedium,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
 
-            // Guide in a light CsCard (white bg, accent bar stays)
+            // Guide in a clean light CsCard (white bg, no accent bar)
             CsCard(
-              accentBarColor: CsColors.lime,
               backgroundColor: CsColors.white,
               borderColor: const Color(0xFFEDEDED),
               padding: const EdgeInsets.all(20),
@@ -178,6 +184,9 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   void _showGuideBottomSheet() {
+    final l = AppLocalizations.of(context)!;
+    final steps = _guideSteps(l);
+
     showModalBottomSheet(
       context: context,
       sheetAnimationStyle: CsMotion.sheet,
@@ -203,9 +212,9 @@ class _TeamsScreenState extends State<TeamsScreen> {
                   ),
                 ),
               ),
-              Text('So funktioniert\'s', style: CsTextStyles.titleLarge),
+              Text(l.howItWorks, style: CsTextStyles.titleLarge),
               const SizedBox(height: 16),
-              ...List.generate(_guideSteps.length, (i) {
+              ...List.generate(steps.length, (i) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
@@ -231,7 +240,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          _guideSteps[i],
+                          steps[i],
                           style: CsTextStyles.bodyMedium.copyWith(height: 1.4),
                         ),
                       ),
@@ -244,7 +253,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
                 width: double.infinity,
                 child: CsSecondaryButton(
                   onPressed: () => Navigator.pop(ctx),
-                  label: 'Verstanden',
+                  label: l.understood,
                 ),
               ),
             ],
@@ -285,6 +294,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
 
   /// Shows a bottom sheet telling anon users they need an account to create teams.
   Future<void> _showAccountRequiredGate() async {
+    final l = AppLocalizations.of(context)!;
+
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -327,26 +338,27 @@ class _TeamsScreenState extends State<TeamsScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Konto erforderlich',
+                  l.accountRequired,
                   style: CsTextStyles.titleLarge,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Um eigene Teams zu erstellen, benötigst du ein Konto. '
-                  'Registriere dich oder melde dich an.',
+                  l.accountRequiredBody,
                   style: CsTextStyles.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
                 CsPrimaryButton(
-                  label: 'Registrieren / Anmelden',
+                  label: l.registerLogin,
                   icon: const Icon(Icons.login_rounded, size: 18),
                   onPressed: () {
+                    // Close the sheet first, then push AuthScreen
+                    // with showClose so the user can return.
                     Navigator.pop(ctx);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const AuthScreen(),
+                        builder: (_) => const AuthScreen(showClose: true),
                       ),
                     );
                   },
@@ -354,7 +366,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
                 const SizedBox(height: 8),
                 CsSecondaryButton(
                   onPressed: () => Navigator.pop(ctx),
-                  label: 'Abbrechen',
+                  label: l.cancel,
                 ),
               ],
             ),
@@ -365,6 +377,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   Future<bool> _confirmDeleteTeam(Map<String, dynamic> team) async {
+    final l = AppLocalizations.of(context)!;
     final teamId = team['id'] as String;
     final teamName = team['name'] ?? 'Team';
 
@@ -409,11 +422,10 @@ class _TeamsScreenState extends State<TeamsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text('Team löschen?', style: CsTextStyles.titleLarge),
+                Text(l.deleteTeamTitle, style: CsTextStyles.titleLarge),
                 const SizedBox(height: 8),
                 Text(
-                  'Möchtest du „$teamName" endgültig löschen? '
-                  'Das kann nicht rückgängig gemacht werden.',
+                  l.deleteTeamBody(teamName),
                   style: CsTextStyles.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
@@ -430,13 +442,13 @@ class _TeamsScreenState extends State<TeamsScreen> {
                       ),
                     ),
                     onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Löschen'),
+                    child: Text(l.delete),
                   ),
                 ),
                 const SizedBox(height: 8),
                 CsSecondaryButton(
                   onPressed: () => Navigator.pop(ctx, false),
-                  label: 'Abbrechen',
+                  label: l.cancel,
                 ),
               ],
             ),
@@ -451,16 +463,17 @@ class _TeamsScreenState extends State<TeamsScreen> {
       await TeamService.deleteTeam(teamId);
       if (!mounted) return true;
       setState(() => _teams.removeWhere((t) => t['id'] == teamId));
-      CsToast.success(context, 'Team „$teamName" gelöscht');
+      CsToast.success(context, l.teamDeleted(teamName));
       return true;
     } catch (e) {
       if (!mounted) return false;
-      CsToast.error(context, 'Team konnte nicht gelöscht werden.');
+      CsToast.error(context, l.teamDeleteError);
       return false;
     }
   }
 
   Future<bool> _confirmLeaveTeam(Map<String, dynamic> team) async {
+    final l = AppLocalizations.of(context)!;
     final teamId = team['id'] as String;
     final teamName = team['name'] ?? 'Team';
 
@@ -505,11 +518,10 @@ class _TeamsScreenState extends State<TeamsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text('Team entfernen?', style: CsTextStyles.titleLarge),
+                Text(l.removeTeamTitle, style: CsTextStyles.titleLarge),
                 const SizedBox(height: 8),
                 Text(
-                  'Du entfernst „$teamName" nur aus deiner Liste. '
-                  'Das Team bleibt für den Captain und andere Mitglieder bestehen.',
+                  l.removeTeamBody(teamName),
                   style: CsTextStyles.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
@@ -526,13 +538,13 @@ class _TeamsScreenState extends State<TeamsScreen> {
                       ),
                     ),
                     onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Entfernen'),
+                    child: Text(l.remove),
                   ),
                 ),
                 const SizedBox(height: 8),
                 CsSecondaryButton(
                   onPressed: () => Navigator.pop(ctx, false),
-                  label: 'Abbrechen',
+                  label: l.cancel,
                 ),
               ],
             ),
@@ -547,11 +559,11 @@ class _TeamsScreenState extends State<TeamsScreen> {
       await TeamService.leaveTeam(teamId);
       if (!mounted) return true;
       setState(() => _teams.removeWhere((t) => t['id'] == teamId));
-      CsToast.success(context, 'Team „$teamName" entfernt');
+      CsToast.success(context, l.teamRemoved(teamName));
       return true;
     } catch (e) {
       if (!mounted) return false;
-      CsToast.error(context, 'Team konnte nicht entfernt werden.');
+      CsToast.error(context, l.teamRemoveError);
       return false;
     }
   }
@@ -575,9 +587,11 @@ class _TeamsScreenState extends State<TeamsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
+
     return CsScaffoldList(
       appBar: CsGlassAppBar(
-        title: 'Meine Teams',
+        title: l.myTeams,
         automaticallyImplyLeading: false,
         actions: [
           Badge(
@@ -585,13 +599,13 @@ class _TeamsScreenState extends State<TeamsScreen> {
             isLabelVisible: _unreadEventCount > 0,
             child: IconButton(
               icon: const Icon(Icons.notifications_outlined),
-              tooltip: 'Benachrichtigungen',
+              tooltip: l.notifications,
               onPressed: _openInbox,
             ),
           ),
           IconButton(
             icon: const Icon(Icons.info_outline),
-            tooltip: 'So funktioniert\'s',
+            tooltip: l.howItWorks,
             onPressed: _showGuideBottomSheet,
           ),
           IconButton(
@@ -627,14 +641,14 @@ class _TeamsScreenState extends State<TeamsScreen> {
                     children: [
                       CsEmptyState(
                         icon: Icons.cloud_off_rounded,
-                        title: 'Verbindungsproblem',
-                        subtitle: 'Daten konnten nicht geladen werden.',
+                        title: l.connectionError,
+                        subtitle: l.dataLoadError,
                       ),
                       const SizedBox(height: 12),
                       FilledButton.icon(
                         onPressed: _load,
                         icon: const Icon(Icons.refresh, size: 18),
-                        label: const Text('Nochmal versuchen'),
+                        label: Text(l.tryAgain),
                       ),
                     ],
                   ),
@@ -650,6 +664,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Widget _buildSegmentedList() {
+    final l = AppLocalizations.of(context)!;
     final ownTeams =
         _teams.where((t) => t['is_owner'] == true).toList();
     final sharedTeams =
@@ -662,7 +677,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
       children: [
         // ── Eigene Teams ────────────────────────────────
         if (ownTeams.isNotEmpty) ...[
-          _buildSectionHeader('Eigene Teams', Icons.shield_outlined),
+          _buildSectionHeader(l.ownTeams, Icons.shield_outlined),
           ...ownTeams.map((t) {
             final idx = globalIndex++;
             return _buildTeamCard(t, idx);
@@ -672,7 +687,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
 
         // ── Geteilte Teams ──────────────────────────────
         if (sharedTeams.isNotEmpty) ...[
-          _buildSectionHeader('Geteilte Teams', Icons.group_outlined),
+          _buildSectionHeader(l.sharedTeams, Icons.group_outlined),
           ...sharedTeams.map((t) {
             final idx = globalIndex++;
             return _buildTeamCard(t, idx);
@@ -706,6 +721,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   Widget _buildTeamCard(Map<String, dynamic> t, int animIndex) {
+    final l = AppLocalizations.of(context)!;
     final teamId = t['id'] as String;
     final sportKey = t['sport_key'] as String?;
     final sport = Sport.byKey(sportKey);
@@ -839,7 +855,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
                   ),
                   const SizedBox(width: 5),
                   Text(
-                    'Saison ${t['season_year']}',
+                    l.season(t['season_year']?.toString() ?? ''),
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w400,

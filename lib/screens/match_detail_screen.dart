@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../l10n/app_localizations.dart';
 import '../models/carpool_offer.dart';
 import '../models/dinner_rsvp.dart';
 import '../models/expense.dart';
@@ -91,6 +92,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   /// Live match data (may be updated after edit).
   late Map<String, dynamic> _match;
 
+  late AppLocalizations l10n;
+
   @override
   void initState() {
     super.initState();
@@ -98,6 +101,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     _load();
     _subscribeLineupChanges();
     _subscribeCarpoolChanges();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    l10n = AppLocalizations.of(context)!;
   }
 
   @override
@@ -382,7 +391,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     } finally {
       _loadInProgress = false;
     }
@@ -553,7 +562,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         _myStatus = old;
         _availUpdating = false;
       });
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -575,28 +584,25 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setD) {
           return CsBottomSheetForm(
-            title: 'Aufstellung generieren',
-            ctaLabel: 'Generieren',
+            title: l10n.generateLineupTitle,
+            ctaLabel: l10n.generateButton,
             onCta: () => Navigator.pop(ctx, true),
-            secondaryLabel: 'Abbrechen',
+            secondaryLabel: l10n.cancel,
             onSecondary: () => Navigator.pop(ctx, false),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Die Aufstellung wird anhand des Rankings und '
-                  'der Verfügbarkeiten erstellt.\n'
-                  'Du kannst danach manuell tauschen.\n\n'
-                  'Eine bestehende Aufstellung wird überschrieben.',
+                  l10n.lineupGenerateDescription,
                   style: CsTextStyles.bodySmall,
                 ),
                 const SizedBox(height: 20),
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Starter',
-                        style: TextStyle(fontWeight: FontWeight.w600),
+                        l10n.starterLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
                     IconButton(
@@ -626,10 +632,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 ),
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Ersatz',
-                        style: TextStyle(fontWeight: FontWeight.w600),
+                        l10n.reserveLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
                     IconButton(
@@ -660,10 +666,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                title: const Text('Unsichere berücksichtigen'),
-                subtitle: const Text(
-                    'Spieler mit „Unsicher" werden ergänzend aufgestellt.',
-                  ),
+                title: Text(l10n.includeMaybeTitle),
+                subtitle: Text(l10n.includeMaybeSubtitle),
                   value: tmpMaybe,
                   onChanged: (v) => setD(() => tmpMaybe = v),
                 ),
@@ -691,14 +695,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       );
       if (!mounted) return;
       CsToast.success(context,
-        'Aufstellung erstellt: '
-        '${result['starters']} Starter, '
-        '${result['reserves']} Ersatz',
+        l10n.lineupCreatedToast('${result['starters']}', '${result['reserves']}'),
       );
       await _load();
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     } finally {
       if (mounted) setState(() => _lineupGenerating = false);
     }
@@ -742,7 +744,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -803,7 +805,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => slot['locked'] = currentLocked);
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -819,10 +821,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       barrierColor: CsColors.black.withValues(alpha: 0.35),
       sheetAnimationStyle: CsMotion.sheet,
       builder: (ctx) => CsBottomSheetForm(
-        title: 'Aufstellung veröffentlichen?',
-        ctaLabel: 'Senden',
+        title: l10n.publishLineupTitle,
+        ctaLabel: l10n.publishSendButton,
         onCta: () => Navigator.pop(ctx, true),
-        secondaryLabel: 'Abbrechen',
+        secondaryLabel: l10n.cancel,
         onSecondary: () => Navigator.pop(ctx, false),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -830,13 +832,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             Icon(Icons.send, size: 40, color: CsColors.blue),
             const SizedBox(height: 12),
             Text(
-              'Alle Team-Mitglieder werden über die '
-              'Aufstellung informiert (In-App + Push).',
+              l10n.publishLineupBody,
               style: CsTextStyles.bodySmall,
             ),
             const SizedBox(height: 8),
             Text(
-              'Möchtest du die Aufstellung jetzt senden?',
+              l10n.publishLineupConfirm,
               style: CsTextStyles.bodySmall.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -853,12 +854,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       if (!mounted) return;
       final recipients = result['recipients'] ?? 0;
       CsToast.success(context,
-        'Aufstellung veröffentlicht – $recipients Benachrichtigungen gesendet',
+        l10n.lineupPublishedToast('$recipients'),
       );
       await _load();
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     } finally {
       if (mounted) setState(() => _lineupPublishing = false);
     }
@@ -877,16 +878,16 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       if (!mounted) return;
       final success = result['success'] == true;
       if (success) {
-        CsToast.success(context, 'Ersatzanfrage an ${result['substitute_name']} gesendet');
+        CsToast.success(context, l10n.subRequestSentToast('${result['substitute_name']}'));
       } else {
         CsToast.info(context,
-          result['message'] as String? ?? 'Kein verfügbarer Ersatzspieler gefunden.',
+          result['message'] as String? ?? l10n.noSubAvailable,
         );
       }
       await _load();
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -900,18 +901,18 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       final success = result['success'] == true;
       if (success) {
         final msg = response == 'accepted'
-            ? 'Ersatzanfrage angenommen'
-            : 'Ersatzanfrage abgelehnt';
+            ? l10n.subRequestAcceptedToast
+            : l10n.subRequestDeclinedToast;
         CsToast.success(context, msg);
       } else {
         CsToast.error(context,
-          result['message'] as String? ?? 'Etwas ist schiefgelaufen.',
+          result['message'] as String? ?? l10n.somethingWentWrong,
         );
       }
       await _load();
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -950,10 +951,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       barrierColor: CsColors.black.withValues(alpha: 0.35),
       sheetAnimationStyle: CsMotion.sheet,
       builder: (ctx) => CsBottomSheetForm(
-        title: 'Spiel löschen?',
-        ctaLabel: 'Löschen',
+        title: l10n.deleteMatchTitle,
+        ctaLabel: l10n.delete,
         onCta: () => Navigator.pop(ctx, true),
-        secondaryLabel: 'Abbrechen',
+        secondaryLabel: l10n.cancel,
         onSecondary: () => Navigator.pop(ctx, false),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -961,9 +962,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             Icon(Icons.delete_forever, size: 40, color: CsColors.error),
             const SizedBox(height: 12),
             Text(
-              'Möchtest du das Spiel gegen '
-              '"${_match['opponent'] ?? '?'}" wirklich löschen?\n\n'
-              'Alle Verfügbarkeiten und Aufstellungen gehen verloren.',
+              l10n.deleteMatchBody(_match['opponent'] as String? ?? '?'),
               style: CsTextStyles.bodySmall,
             ),
           ],
@@ -975,11 +974,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     try {
       await MatchService.deleteMatch(widget.matchId);
       if (!mounted) return;
-      CsToast.success(context, 'Spiel gelöscht');
+      CsToast.success(context, l10n.matchDeleted);
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -1047,7 +1046,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
   String _roleTag(Map<String, dynamic> member) {
     final role = member['role'] as String?;
-    if (role == 'captain') return ' (Captain)';
+    if (role == 'captain') return l10n.roleCaptainSuffix;
     return '';
   }
 
@@ -1063,10 +1062,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   // ═══════════════════════════════════════════════════════════
 
   // ── Tab labels for segment tabs ──
-  static const _tabLabels = [
-    'Übersicht',
-    'Aufstellung',
-    'Mehr',
+  List<String> get _tabLabels => [
+    l10n.matchTabOverview,
+    l10n.matchTabLineup,
+    l10n.matchTabMore,
   ];
 
   @override
@@ -1085,14 +1084,14 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 if (value == 'edit') _editMatch();
                 if (value == 'delete') _deleteMatch();
               },
-              itemBuilder: (_) => const [
+              itemBuilder: (_) => [
                 PopupMenuItem(
                   value: 'edit',
                   child: Row(
                     children: [
-                      Icon(Icons.edit_outlined, size: 18, color: CsColors.gray900),
-                      SizedBox(width: 8),
-                      Text('Bearbeiten'),
+                      const Icon(Icons.edit_outlined, size: 18, color: CsColors.gray900),
+                      const SizedBox(width: 8),
+                      Text(l10n.editLabel),
                     ],
                   ),
                 ),
@@ -1100,9 +1099,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   value: 'delete',
                   child: Row(
                     children: [
-                      Icon(Icons.delete_outline, size: 18, color: CsColors.error),
-                      SizedBox(width: 8),
-                      Text('Löschen'),
+                      const Icon(Icons.delete_outline, size: 18, color: CsColors.error),
+                      const SizedBox(width: 8),
+                      Text(l10n.delete),
                     ],
                   ),
                 ),
@@ -1200,7 +1199,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                         borderRadius: BorderRadius.circular(CsRadii.full),
                       ),
                       child: Text(
-                        isHome ? 'Heim' : 'Auswärts',
+                        isHome ? l10n.home : l10n.away,
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -1229,7 +1228,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   _cardInfoRow(Icons.notes, m['note'] as String),
                 const SizedBox(height: 10),
                 CsProgressRow(
-                  label: '$yes von $total zugesagt',
+                  label: l10n.matchConfirmedProgress('$yes', '$total'),
                   value: '$yes / $total',
                   progress: total > 0 ? yes / total : 0,
                   color: CsColors.emerald,
@@ -1254,7 +1253,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Meine Verfügbarkeit',
+                  l10n.myAvailability,
                   style: CsTextStyles.titleSmall.copyWith(
                     fontWeight: FontWeight.w600,
                     color: CsColors.gray900,
@@ -1263,13 +1262,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    _availButton('yes', 'Zugesagt', CsColors.success, Icons.check_circle_outline),
+                    _availButton('yes', l10n.availYes, CsColors.success, Icons.check_circle_outline),
                     const SizedBox(width: 6),
-                    _availButton('no', 'Abgesagt', CsColors.error, Icons.cancel_outlined),
+                    _availButton('no', l10n.availNo, CsColors.error, Icons.cancel_outlined),
                     const SizedBox(width: 6),
                     _availButton(
                       'maybe',
-                      'Unsicher',
+                      l10n.availMaybe,
                       CsColors.warning,
                       Icons.help_outline,
                     ),
@@ -1294,7 +1293,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Verfügbarkeiten',
+                  l10n.availabilitiesTitle,
                   style: CsTextStyles.titleSmall.copyWith(
                     fontWeight: FontWeight.w600,
                     color: CsColors.gray900,
@@ -1315,7 +1314,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 ),
                 const SizedBox(height: 10),
                 CsProgressRow(
-                  label: '${yes + no + maybe} von $total haben geantwortet',
+                  label: l10n.respondedProgress('${yes + no + maybe}', '$total'),
                   value: '${yes + no + maybe} / $total',
                   progress: total > 0 ? (yes + no + maybe) / total : 0,
                   color: CsColors.emerald,
@@ -1342,7 +1341,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Text(
-                    'Verfügbarkeiten der Spieler',
+                    l10n.playerAvailabilities,
                     style: CsTextStyles.titleSmall.copyWith(
                       fontWeight: FontWeight.w600,
                       color: CsColors.gray900,
@@ -1361,12 +1360,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         const SizedBox(height: 14),
 
         // ── Ersatz section (moved from "Mehr" tab) ──
-        _sectionHeader(Icons.swap_horiz, 'Ersatz'),
+        _sectionHeader(Icons.swap_horiz, l10n.subRequestSection),
         CsAnimatedEntrance(
           delay: const Duration(milliseconds: 200),
           child: (_myPendingSubRequests.isNotEmpty || _subRequests.isNotEmpty)
               ? _buildSubRequestSection()
-              : _compactEmptyState('Keine Ersatzanfragen vorhanden. Bei Absagen kannst du hier Ersatz anfragen.'),
+              : _compactEmptyState(l10n.noSubRequests),
         ),
       ],
     );
@@ -1399,7 +1398,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
         // ── Section: Fahrten ──
-        _sectionHeader(Icons.directions_car, 'Fahrten'),
+        _sectionHeader(Icons.directions_car, l10n.sectionRides),
         CsAnimatedEntrance(
           delay: const Duration(milliseconds: 60),
           child: _buildCarpoolSection(),
@@ -1408,7 +1407,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         const SizedBox(height: 14),
 
         // ── Section: Essen ──
-        _sectionHeader(Icons.restaurant, 'Essen'),
+        _sectionHeader(Icons.restaurant, l10n.sectionDinner),
         CsAnimatedEntrance(
           delay: const Duration(milliseconds: 120),
           child: _buildDinnerSection(),
@@ -1417,7 +1416,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         const SizedBox(height: 14),
 
         // ── Section: Spesen ──
-        _sectionHeader(Icons.payments, 'Spesen'),
+        _sectionHeader(Icons.payments, l10n.sectionExpenses),
         CsAnimatedEntrance(
           delay: const Duration(milliseconds: 180),
           child: _buildExpensesSection(),
@@ -1517,7 +1516,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Aufstellung',
+                          l10n.lineupTitle,
                           style: CsTextStyles.titleSmall.copyWith(
                             fontWeight: FontWeight.w600,
                             color: CsColors.gray900,
@@ -1525,7 +1524,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                         ),
                         if (lineupStatus != null)
                           Text(
-                            isDraft ? 'Entwurf' : 'Veröffentlicht',
+                            isDraft ? l10n.lineupStatusDraft : l10n.lineupStatusPublished,
                             style: CsTextStyles.bodySmall.copyWith(
                               fontSize: 12,
                               color: CsColors.gray500,
@@ -1542,8 +1541,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 const SizedBox(height: 10),
                 CsProgressRow(
                   label: (starters.length + reserves.length) >= totalNeeded
-                      ? 'Alle Plätze besetzt'
-                      : '${totalNeeded - (starters.length + reserves.length)} ${(totalNeeded - (starters.length + reserves.length)) == 1 ? 'Platz' : 'Plätze'} frei',
+                      ? l10n.allSlotsOccupied
+                      : (totalNeeded - (starters.length + reserves.length)) == 1
+                          ? l10n.slotsFreeSingle
+                          : l10n.slotsFree('${totalNeeded - (starters.length + reserves.length)}'),
                   value: '${starters.length + reserves.length} / $totalNeeded',
                   progress: totalNeeded > 0
                       ? (starters.length + reserves.length) / totalNeeded
@@ -1559,7 +1560,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   onPressed: _lineupGenerating ? null : _generateLineup,
                   loading: _lineupGenerating,
                   icon: const Icon(Icons.auto_fix_high, size: 18),
-                  label: _lineupSlots.isEmpty ? 'Generieren' : 'Neu generieren',
+                  label: _lineupSlots.isEmpty ? l10n.generateButton : l10n.regenerateButton,
                 ),
               ],
             ],
@@ -1579,7 +1580,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Noch keine Aufstellung vorhanden.',
+                      l10n.noLineupYet,
                       style: CsTextStyles.bodySmall.copyWith(
                         fontStyle: FontStyle.italic,
                       ),
@@ -1598,8 +1599,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Noch keine Aufstellung vorhanden.\n'
-                      'Tippe auf „Generieren", um eine zu erstellen.',
+                      l10n.noLineupYetAdmin,
                       style: CsTextStyles.bodySmall.copyWith(
                         fontStyle: FontStyle.italic,
                       ),
@@ -1613,7 +1613,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             const SizedBox(height: 8),
             _premiumBanner(
               icon: Icons.hourglass_top,
-              text: 'Captain erstellt gerade die Aufstellung …',
+              text: l10n.captainCreatingLineup,
               color: CsColors.warning,
             ),
           ] else ...[
@@ -1621,8 +1621,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               const SizedBox(height: 8),
               _premiumBanner(
                 icon: Icons.auto_mode,
-                text:
-                    'Ersatzkette aktiv: Bei Absage rückt der nächste Ersatz automatisch nach.',
+                text: l10n.subChainActive,
                 color: CsColors.info,
               ),
             ],
@@ -1648,7 +1647,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Text(
-                        'Starter (${starters.length})',
+                        l10n.starterCountHeader('${starters.length}'),
                         style: CsTextStyles.titleSmall.copyWith(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
@@ -1668,7 +1667,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: Text(
-                          'Ersatz (${reserves.length})',
+                          l10n.reserveCountHeader('${reserves.length}'),
                           style: CsTextStyles.titleSmall.copyWith(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
@@ -1697,7 +1696,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 onPressed: _lineupPublishing ? null : _publishLineup,
                 loading: _lineupPublishing,
                 icon: const Icon(Icons.send, size: 18),
-                label: 'Info an Team senden',
+                label: l10n.sendLineupToTeam,
               ),
             ],
 
@@ -1705,8 +1704,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               const SizedBox(height: 12),
               _premiumBanner(
                 icon: Icons.check_circle,
-                text:
-                    'Aufstellung veröffentlicht. Absagen lösen automatisches Nachrücken aus.',
+                text: l10n.lineupPublishedBanner,
                 color: CsColors.success,
               ),
             ],
@@ -1723,8 +1721,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   Widget _buildViolationBanner() {
     final count = _lineupViolations.length;
     final title = count == 1
-        ? '⚠️ 1 Regelverstoss erkannt'
-        : '⚠️ $count Regelverstösse erkannt';
+        ? l10n.violationSingle
+        : l10n.violationMultiple('$count');
 
     return CsLightCard(
       color: CsColors.warning.withValues(alpha: 0.08),
@@ -1770,7 +1768,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             Padding(
               padding: const EdgeInsets.only(left: 28, top: 2),
               child: Text(
-                '… und ${_lineupViolations.length - 5} weitere',
+                l10n.violationMore('${_lineupViolations.length - 5}'),
                 style: CsTextStyles.labelSmall.copyWith(
                   fontStyle: FontStyle.italic,
                   color: CsColors.warning,
@@ -1781,7 +1779,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           Padding(
             padding: const EdgeInsets.only(left: 28),
             child: Text(
-              'Veröffentlichung trotzdem möglich.',
+              l10n.publishAnyway,
               style: CsTextStyles.labelSmall.copyWith(
                 fontStyle: FontStyle.italic,
                 color: CsColors.warning,
@@ -1862,7 +1860,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       ),
       subtitle: isMe
           ? Text(
-              slotType == 'starter' ? 'Du · Starter' : 'Du · Ersatz',
+              slotType == 'starter' ? l10n.youStarter : l10n.youReserve,
               style: CsTextStyles.labelSmall.copyWith(color: CsColors.info),
             )
           : null,
@@ -1933,13 +1931,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           const SizedBox(height: 8),
           Text(
             isPublished
-                ? 'Aufstellung ist veröffentlicht – Reihenfolge kann nicht '
-                      'mehr geändert werden.'
+                ? l10n.lineupPublishedNoReorder
                 : _lineupGenerating
-                ? 'Aufstellung wird generiert …'
+                ? l10n.lineupBeingGenerated
                 : _lineupPublishing
-                ? 'Aufstellung wird veröffentlicht …'
-                : 'Reihenfolge ändern ist momentan nicht möglich.',
+                ? l10n.lineupBeingPublished
+                : l10n.reorderNotPossible,
             style: CsTextStyles.bodySmall.copyWith(fontStyle: FontStyle.italic),
           ),
         ],
@@ -1986,7 +1983,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       ),
       subtitle: isMe
           ? Text(
-              slotType == 'starter' ? 'Du · Starter' : 'Du · Ersatz',
+              slotType == 'starter' ? l10n.youStarter : l10n.youReserve,
               style: CsTextStyles.labelSmall.copyWith(color: CsColors.info),
             )
           : null,
@@ -2016,7 +2013,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Fahrgemeinschaften',
+                  l10n.carpoolsTitle,
                   style: CsTextStyles.titleSmall.copyWith(
                     fontWeight: FontWeight.w600,
                     color: CsColors.gray900,
@@ -2026,17 +2023,17 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 CsPrimaryButton(
                   onPressed: () => _showCarpoolOfferDialog(),
                   icon: const Icon(Icons.add, size: 18),
-                  label: 'Ich fahre',
+                  label: l10n.iDriveButton,
                 ),
               ],
             ),
           ),
 
         if (_carpoolOffers.isEmpty && hasMyOffer)
-          _compactEmptyState('Noch keine Fahrgemeinschaften vorhanden.'),
+          _compactEmptyState(l10n.noCarpoolsYet),
 
         if (_carpoolOffers.isEmpty && !hasMyOffer)
-          _compactEmptyState('Noch keine Fahrgemeinschaften. Biete eine Mitfahrgelegenheit an.'),
+          _compactEmptyState(l10n.noCarpoolsHint),
 
         // ── Offer accordion cards ──
         ..._carpoolOffers.map((offer) {
@@ -2077,7 +2074,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${_playerNameForUserId(offer.driverUserId)}${isDriver ? ' (du)' : ''}',
+                              '${_playerNameForUserId(offer.driverUserId)}${isDriver ? ' ${l10n.youSuffix}' : ''}',
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
@@ -2190,13 +2187,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                               FilledButton.tonalIcon(
                                 onPressed: () => _joinCarpool(offer.id),
                                 icon: const Icon(Icons.person_add, size: 16),
-                                label: const Text('Mitfahren'),
+                                label: Text(l10n.joinRideButton),
                               ),
                             if (canLeave)
                               OutlinedButton.icon(
                                 onPressed: () => _leaveCarpool(offer.id),
                                 icon: const Icon(Icons.person_remove, size: 16),
-                                label: const Text('Aussteigen'),
+                                label: Text(l10n.leaveRideButton),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: CsColors.error,
                                 ),
@@ -2207,7 +2204,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                                 onPressed: () => _showCarpoolOfferDialog(
                                     existingOffer: offer),
                                 icon: const Icon(Icons.edit_outlined, size: 20),
-                                tooltip: 'Bearbeiten',
+                                tooltip: l10n.editLabel,
                                 style: IconButton.styleFrom(
                                   foregroundColor: CsColors.gray900,
                                 ),
@@ -2216,7 +2213,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                                 onPressed: () => _deleteCarpool(offer.id),
                                 icon: const Icon(
                                     Icons.delete_outline, size: 20),
-                                tooltip: 'Löschen',
+                                tooltip: l10n.delete,
                                 style: IconButton.styleFrom(
                                   foregroundColor: CsColors.gray900,
                                 ),
@@ -2247,7 +2244,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     final m = local.minute.toString().padLeft(2, '0');
     final d = local.day.toString().padLeft(2, '0');
     final mo = local.month.toString().padLeft(2, '0');
-    return '$d.$mo. um $h:$m';
+    return l10n.departAtFormat('$d.$mo.', '$h:$m');
   }
 
   // ── Carpool actions ──
@@ -2263,11 +2260,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       debugPrint(
         'CARPOOL_JOIN_TAP: reload done, offers=${_carpoolOffers.length}',
       );
-      CsToast.success(context, 'Du fährst mit');
+      CsToast.success(context, l10n.joinedRideToast);
     } catch (e) {
       debugPrint('CARPOOL_JOIN_TAP ERROR: $e');
       if (!mounted) return;
-      CsToast.error(context, 'Mitfahren konnte nicht gespeichert werden.');
+      CsToast.error(context, l10n.joinRideError);
     }
   }
 
@@ -2282,11 +2279,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       debugPrint(
         'CARPOOL_LEAVE_TAP: reload done, offers=${_carpoolOffers.length}',
       );
-      CsToast.success(context, 'Ausgestiegen');
+      CsToast.success(context, l10n.leftRideToast);
     } catch (e) {
       debugPrint('CARPOOL_LEAVE_TAP ERROR: $e');
       if (!mounted) return;
-      CsToast.error(context, 'Aussteigen konnte nicht gespeichert werden.');
+      CsToast.error(context, l10n.leaveRideError);
     }
   }
 
@@ -2298,10 +2295,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       barrierColor: CsColors.black.withValues(alpha: 0.35),
       sheetAnimationStyle: CsMotion.sheet,
       builder: (ctx) => CsBottomSheetForm(
-        title: 'Fahrgemeinschaft löschen?',
-        ctaLabel: 'Löschen',
+        title: l10n.deleteCarpoolTitle,
+        ctaLabel: l10n.delete,
         onCta: () => Navigator.pop(ctx, true),
-        secondaryLabel: 'Abbrechen',
+        secondaryLabel: l10n.cancel,
         onSecondary: () => Navigator.pop(ctx, false),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2309,7 +2306,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             Icon(Icons.delete_forever, size: 40, color: CsColors.error),
             const SizedBox(height: 12),
             Text(
-              'Alle Mitfahrer werden entfernt.',
+              l10n.deleteCarpoolBody,
               style: CsTextStyles.bodySmall,
             ),
           ],
@@ -2322,7 +2319,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       await _reloadCarpool();
     } catch (e) {
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -2346,18 +2343,18 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         builder: (ctx, setD) {
           return CsBottomSheetForm(
             title: existingOffer != null
-                ? 'Fahrgemeinschaft bearbeiten'
-                : 'Ich fahre',
-            ctaLabel: 'Speichern',
+                ? l10n.editCarpoolTitle
+                : l10n.iDriveButton,
+            ctaLabel: l10n.save,
             onCta: () => Navigator.pop(ctx, true),
-            secondaryLabel: 'Abbrechen',
+            secondaryLabel: l10n.cancel,
             onSecondary: () => Navigator.pop(ctx, false),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Wie viele Plätze bietest du an?',
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                Text(
+                  l10n.seatsQuestion,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -2386,10 +2383,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 const SizedBox(height: 16),
                 TextField(
                   controller: locationCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Abfahrtsort',
-                    hintText: 'z.B. Bahnhof Bern',
-                    prefixIcon: Icon(Icons.location_on, size: 18),
+                  decoration: InputDecoration(
+                    labelText: l10n.departureLocationLabel,
+                    hintText: l10n.departureLocationHint,
+                    prefixIcon: const Icon(Icons.location_on, size: 18),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -2400,8 +2397,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                     Expanded(
                       child: Text(
                         departTime != null
-                            ? 'Abfahrt: ${departTime!.format(ctx)}'
-                            : 'Abfahrtszeit (optional)',
+                            ? l10n.departureTimeWithValue(departTime!.format(ctx))
+                            : l10n.departureTimeOptional,
                       ),
                     ),
                     IconButton(
@@ -2413,22 +2410,22 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                         if (t != null) setD(() => departTime = t);
                       },
                       icon: const Icon(Icons.edit_calendar, size: 18),
-                      tooltip: departTime != null ? 'Ändern' : 'Setzen',
+                      tooltip: departTime != null ? l10n.changeTooltip : l10n.setTooltip,
                     ),
                     if (departTime != null)
                       IconButton(
                         onPressed: () => setD(() => departTime = null),
                         icon: const Icon(Icons.clear, size: 16),
-                        tooltip: 'Entfernen',
+                        tooltip: l10n.removeTooltipLabel,
                       ),
                   ],
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: noteCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Notiz (optional)',
-                    hintText: 'z.B. Treffpunkt Parkplatz',
+                  decoration: InputDecoration(
+                    labelText: l10n.noteOptional,
+                    hintText: l10n.carpoolNoteHint,
                     prefixIcon: Icon(Icons.notes, size: 18),
                   ),
                   maxLines: 2,
@@ -2479,16 +2476,16 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       );
 
       if (visible) {
-        CsToast.success(context, 'Fahrgemeinschaft gespeichert');
+        CsToast.success(context, l10n.carpoolSavedToast);
       } else {
         CsToast.info(context,
-          'Fahrgemeinschaft erstellt. Bitte lade die Seite neu.',
+          l10n.carpoolCreatedReloadToast,
         );
       }
     } catch (e) {
       debugPrint('CARPOOL_UI CREATE ERROR: $e');
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -2524,7 +2521,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Essen',
+                      l10n.sectionDinner,
                       style: CsTextStyles.titleSmall.copyWith(
                         fontWeight: FontWeight.w600,
                         color: CsColors.gray900,
@@ -2545,7 +2542,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   _neutralCount(Icons.help_outline, maybeCount),
                   const Spacer(),
                   Text(
-                    '$answered von $totalMembers',
+                    l10n.answeredOfTotal('$answered', '$totalMembers'),
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -2572,7 +2569,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               // Inline RSVP buttons ("Deine Zusage")
               const SizedBox(height: 14),
               Text(
-                'Deine Zusage',
+                l10n.yourRsvp,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
@@ -2582,11 +2579,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               const SizedBox(height: 6),
               Row(
                 children: [
-                  _dinnerButton('Ja', 'yes', Icons.check_circle_outline, CsColors.success),
+                  _dinnerButton(l10n.dinnerYes, 'yes', Icons.check_circle_outline, CsColors.success),
                   const SizedBox(width: 6),
-                  _dinnerButton('Nein', 'no', Icons.cancel_outlined, CsColors.error),
+                  _dinnerButton(l10n.dinnerNo, 'no', Icons.cancel_outlined, CsColors.error),
                   const SizedBox(width: 6),
-                  _dinnerButton('Unsicher', 'maybe', Icons.help_outline, CsColors.warning),
+                  _dinnerButton(l10n.dinnerMaybe, 'maybe', Icons.help_outline, CsColors.warning),
                 ],
               ),
 
@@ -2619,7 +2616,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                       Icon(Icons.group_outlined, size: 18, color: CsColors.gray500),
                       const SizedBox(width: 8),
                       Text(
-                        'Teilnehmer',
+                        l10n.participantsTitle,
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -2670,7 +2667,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        '$name${isMe ? ' (du)' : ''}',
+                                        '$name${isMe ? ' ${l10n.youSuffix}' : ''}',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: isMe
@@ -2788,7 +2785,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         controller: ctrl,
         style: const TextStyle(fontSize: 13, color: CsColors.gray900),
         decoration: InputDecoration(
-          hintText: 'Notiz (z.B. "komme später")',
+          hintText: l10n.dinnerNoteHint,
           hintStyle: TextStyle(fontSize: 13, color: CsColors.gray400),
           isDense: true,
           contentPadding:
@@ -2850,7 +2847,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         _myDinnerStatus = oldStatus;
         _dinnerUpdating = false;
       });
-      CsToast.error(context, 'Speichern nicht möglich. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.dinnerSaveError);
     }
   }
 
@@ -2891,7 +2888,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Spesen',
+                      l10n.sectionExpenses,
                       style: CsTextStyles.titleSmall.copyWith(
                         fontWeight: FontWeight.w600,
                         color: CsColors.gray900,
@@ -2913,7 +2910,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Total', style: CsTextStyles.bodySmall.copyWith(color: CsColors.gray500)),
+                        Text(l10n.expenseTotal, style: CsTextStyles.bodySmall.copyWith(color: CsColors.gray500)),
                         Text(
                           'CHF ${totalCHF.toStringAsFixed(2)}',
                           style: CsTextStyles.titleMedium.copyWith(
@@ -2928,7 +2925,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          'Pro Kopf ($memberCount Pers.)',
+                          l10n.perPersonLabel('$memberCount'),
                           style: CsTextStyles.bodySmall.copyWith(color: CsColors.gray500),
                         ),
                         Text(
@@ -2945,7 +2942,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 ),
                 const SizedBox(height: 10),
                 CsProgressRow(
-                  label: 'Bezahlt',
+                  label: l10n.paidLabel,
                   value:
                       'CHF ${(totalPaidCents / 100).toStringAsFixed(2)} / ${totalCHF.toStringAsFixed(2)}',
                   progress: totalCents > 0 ? totalPaidCents / totalCents : 0,
@@ -2959,11 +2956,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                     ? () => _showCreateExpenseDialog()
                     : () {
                         CsToast.info(context,
-                          'Zuerst unter „Essen" zusagen, bevor Spesen erfasst werden können.',
+                          l10n.firstConfirmDinner,
                         );
                       },
                 icon: const Icon(Icons.add, size: 18),
-                label: 'Ausgabe hinzufügen',
+                label: l10n.addExpenseButton,
               ),
             ],
           ),
@@ -2981,8 +2978,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 Expanded(
                   child: Text(
                     dinnerYesCount > 0
-                        ? 'Noch keine Spesen erfasst. Lege eine neue Ausgabe an.'
-                        : 'Noch keine Spesen möglich. Zuerst unter „Essen" zusagen.',
+                        ? l10n.noExpensesYet
+                        : l10n.noExpensesPossible,
                     style: CsTextStyles.bodySmall.copyWith(
                       fontStyle: FontStyle.italic,
                     ),
@@ -3014,7 +3011,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               ),
               title: Text(expense.title, style: CsTextStyles.labelLarge),
               subtitle: Text(
-                'Bezahlt von $paidByName${isPaidByMe ? ' (du)' : ''}'
+                '${l10n.paidByLabel(paidByName)}${isPaidByMe ? ' ${l10n.youSuffix}' : ''}'
                 ' · ${expense.amountFormatted}'
                 '${expense.note != null && expense.note!.isNotEmpty ? '\n${expense.note}' : ''}',
                 style: CsTextStyles.bodySmall,
@@ -3024,11 +3021,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${expense.perPersonFormatted}/Pers.',
+                    l10n.perPersonAmountLabel(expense.perPersonFormatted),
                     style: CsTextStyles.labelSmall,
                   ),
                   Text(
-                    '${expense.paidCount}/${expense.shareCount} bezahlt',
+                    l10n.paidOfShareCount('${expense.paidCount}', '${expense.shareCount}'),
                     style: CsTextStyles.labelSmall.copyWith(
                       color: expense.openCount == 0
                           ? CsColors.success
@@ -3047,7 +3044,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                     dense: true,
                     leading: _userAvatar(share.userId, radius: 14),
                     title: Text(
-                      '$shareName${isMe ? ' (du)' : ''}',
+                      '$shareName${isMe ? ' ${l10n.youSuffix}' : ''}',
                       style: TextStyle(
                         fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
                         decoration: share.isPaid
@@ -3057,7 +3054,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                     ),
                     subtitle: Text(
                       'CHF ${share.shareDouble.toStringAsFixed(2)}'
-                      '${share.isPaid ? ' · Bezahlt' : ' · Offen'}',
+                      '${share.isPaid ? ' · ${l10n.sharePaid}' : ' · ${l10n.shareOpen}'}',
                       style: CsTextStyles.bodySmall.copyWith(
                         color: share.isPaid
                             ? CsColors.success
@@ -3090,7 +3087,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                         onPressed: () => _confirmDeleteExpense(expense),
                         icon: const Icon(Icons.delete_outline, size: 18),
                         color: CsColors.error,
-                        tooltip: 'Ausgabe löschen',
+                        tooltip: l10n.deleteExpenseTooltip,
                         style: IconButton.styleFrom(
                           minimumSize: const Size(36, 36),
                           padding: const EdgeInsets.all(6),
@@ -3111,11 +3108,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       await ExpenseService.markSharePaid(shareId: shareId, paid: paid);
       await _reloadExpenses();
       if (!mounted) return;
-      CsToast.success(context, paid ? 'Als bezahlt markiert' : 'Als offen markiert');
+      CsToast.success(context, paid ? l10n.markedAsPaid : l10n.markedAsOpen);
     } catch (e) {
       debugPrint('EXPENSE_TOGGLE_PAID ERROR: $e');
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -3132,29 +3129,29 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       barrierColor: CsColors.black.withValues(alpha: 0.35),
       sheetAnimationStyle: CsMotion.sheet,
       builder: (ctx) => CsBottomSheetForm(
-        title: 'Ausgabe hinzufügen',
-        ctaLabel: 'Speichern',
+        title: l10n.addExpenseButton,
+        ctaLabel: l10n.save,
         onCta: () => Navigator.pop(ctx, true),
-        secondaryLabel: 'Abbrechen',
+        secondaryLabel: l10n.cancel,
         onSecondary: () => Navigator.pop(ctx, false),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TextField(
               controller: titleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Titel *',
-                hintText: 'z.B. Pizza, Getränke',
+              decoration: InputDecoration(
+                labelText: l10n.expenseTitleField,
+                hintText: l10n.expenseTitleHint,
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: amountCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Betrag (CHF) *',
-                hintText: 'z.B. 45.50',
-                prefixText: 'CHF ',
+              decoration: InputDecoration(
+                labelText: l10n.expenseAmountField,
+                hintText: l10n.expenseAmountHint,
+                prefixText: l10n.currencyPrefix,
               ),
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -3163,16 +3160,15 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: noteCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Notiz (optional)',
-                hintText: 'z.B. Restaurant Adler',
+              decoration: InputDecoration(
+                labelText: l10n.noteOptional,
+                hintText: l10n.expenseNoteHint,
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
             const SizedBox(height: 12),
             Text(
-              'Wird gleichmässig auf alle $dinnerYes '
-              'Dinner-Teilnehmer (Ja) verteilt.',
+              l10n.expenseDistribution('$dinnerYes'),
               style: CsTextStyles.bodySmall.copyWith(
                 color: CsColors.gray500,
               ),
@@ -3190,14 +3186,14 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
     if (title.isEmpty) {
       if (!mounted) return;
-      CsToast.info(context, 'Bitte gib einen Titel ein.');
+      CsToast.info(context, l10n.enterTitleValidation);
       return;
     }
 
     final amount = double.tryParse(amountText);
     if (amount == null || amount <= 0) {
       if (!mounted) return;
-      CsToast.info(context, 'Bitte gib einen gültigen Betrag ein.');
+      CsToast.info(context, l10n.enterAmountValidation);
       return;
     }
 
@@ -3211,12 +3207,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       await _reloadExpenses();
       if (!mounted) return;
       CsToast.success(context,
-        'Ausgabe „$title" (CHF ${amount.toStringAsFixed(2)}) erstellt',
+        l10n.expenseCreatedToast(title, amount.toStringAsFixed(2)),
       );
     } catch (e) {
       debugPrint('EXPENSE_CREATE ERROR: $e');
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -3228,10 +3224,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       barrierColor: CsColors.black.withValues(alpha: 0.35),
       sheetAnimationStyle: CsMotion.sheet,
       builder: (ctx) => CsBottomSheetForm(
-        title: 'Ausgabe löschen?',
-        ctaLabel: 'Löschen',
+        title: l10n.deleteExpenseTitle,
+        ctaLabel: l10n.delete,
         onCta: () => Navigator.pop(ctx, true),
-        secondaryLabel: 'Abbrechen',
+        secondaryLabel: l10n.cancel,
         onSecondary: () => Navigator.pop(ctx, false),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3239,8 +3235,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             Icon(Icons.delete_forever, size: 40, color: CsColors.error),
             const SizedBox(height: 12),
             Text(
-              '„${expense.title}" (${expense.amountFormatted}) '
-              'und alle Anteile werden gelöscht.',
+              l10n.deleteExpenseBody(expense.title, expense.amountFormatted),
               style: CsTextStyles.bodySmall,
             ),
           ],
@@ -3254,11 +3249,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       await ExpenseService.deleteExpense(expense.id);
       await _reloadExpenses();
       if (!mounted) return;
-      CsToast.success(context, 'Ausgabe „${expense.title}" gelöscht');
+      CsToast.success(context, l10n.expenseDeletedToast(expense.title));
     } catch (e) {
       debugPrint('EXPENSE_DELETE ERROR: $e');
       if (!mounted) return;
-      CsToast.error(context, 'Etwas ist schiefgelaufen. Bitte versuche es erneut.');
+      CsToast.error(context, l10n.genericError);
     }
   }
 
@@ -3285,7 +3280,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Ersatzanfragen',
+                      l10n.subRequestsTitle,
                       style: CsTextStyles.titleSmall.copyWith(
                         fontWeight: FontWeight.w600,
                         color: CsColors.gray900,
@@ -3294,7 +3289,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   ),
                   if (pendingCount > 0)
                     CsStatusChip(
-                      label: '$pendingCount ausstehend',
+                      label: l10n.pendingCountChip('$pendingCount'),
                       variant: CsChipVariant.amber,
                     ),
                 ],
@@ -3302,8 +3297,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               if (_subRequests.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 CsProgressRow(
-                  label: 'Ausstehende Anfragen',
-                  value: '$pendingCount von ${_subRequests.length}',
+                  label: l10n.pendingRequestsLabel,
+                  value: l10n.answeredOfTotal('$pendingCount', '${_subRequests.length}'),
                   progress: _subRequests.isNotEmpty
                       ? pendingCount / _subRequests.length
                       : 0,
@@ -3320,7 +3315,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Text(
-              'Du wurdest angefragt:',
+              l10n.youWereAsked,
               style: CsTextStyles.labelLarge.copyWith(color: CsColors.warning),
             ),
           ),
@@ -3346,12 +3341,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   actionable ? Icons.swap_horiz : Icons.timer_off,
                   color: actionable ? CsColors.warning : CsColors.gray400,
                 ),
-                title: Text('Ersatz für $originalName'),
+                title: Text(l10n.subForPlayer(originalName)),
                 subtitle: Text(
                   actionable
-                      ? 'Kannst du einspringen?'
+                      ? '${l10n.canYouStepIn}'
                             '${expiryLabel != null ? ' ($expiryLabel)' : ''}'
-                      : 'Zeit abgelaufen',
+                      : l10n.timeExpired,
                   style: CsTextStyles.bodySmall.copyWith(
                     color: actionable ? null : CsColors.gray400,
                   ),
@@ -3366,7 +3361,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                               color: CsColors.success,
                               size: 32,
                             ),
-                            tooltip: 'Annehmen',
+                            tooltip: l10n.acceptTooltip,
                             onPressed: () => _respondSubRequest(
                               req['id'] as String,
                               'accepted',
@@ -3379,7 +3374,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                               color: CsColors.error,
                               size: 32,
                             ),
-                            tooltip: 'Ablehnen',
+                            tooltip: l10n.declineTooltip,
                             onPressed: () => _respondSubRequest(
                               req['id'] as String,
                               'declined',
@@ -3396,7 +3391,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
         if (_subRequests.isNotEmpty) ...[
           Text(
-            'Anfragen-Verlauf:',
+            l10n.requestHistory,
             style: CsTextStyles.bodySmall.copyWith(fontStyle: FontStyle.italic),
           ),
           const SizedBox(height: 4),
@@ -3435,7 +3430,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             return ListTile(
               dense: true,
               leading: Icon(icon, color: color, size: 20),
-              title: Text('$subName für $originalName'),
+              title: Text(l10n.subForPlayerHistory(subName, originalName)),
               subtitle: expiryHint != null
                   ? Text(
                       expiryHint,
@@ -3446,10 +3441,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                   : null,
               trailing: CsStatusChip(
                 label: switch (displayStatus) {
-                  'pending' => 'Wartet auf Antwort',
-                  'accepted' => 'Angenommen',
-                  'declined' => 'Abgelehnt',
-                  'expired' => 'Zeit abgelaufen',
+                  'pending' => l10n.chipWaiting,
+                  'accepted' => l10n.chipAccepted,
+                  'declined' => l10n.chipDeclined,
+                  'expired' => l10n.timeExpired,
                   _ => displayStatus,
                 },
                 variant: switch (displayStatus) {
@@ -3490,7 +3485,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         if (email != null && email.isNotEmpty) return email.split('@').first;
       }
     }
-    return 'Unbekannt';
+    return l10n.unknownPlayer;
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -3536,7 +3531,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
             TextButton.icon(
               onPressed: () => _createSubRequest(uid),
               icon: const Icon(Icons.swap_horiz, size: 16),
-              label: const Text('Ersatz', style: TextStyle(fontSize: 12)),
+              label: Text(l10n.subButton, style: const TextStyle(fontSize: 12)),
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: const Size(0, 32),
@@ -3556,7 +3551,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   Widget _lineupStatusBadge(String status) {
     final isDraft = status == 'draft';
     return CsStatusChip(
-      label: isDraft ? 'Entwurf' : 'Veröffentlicht',
+      label: isDraft ? l10n.lineupStatusDraft : l10n.lineupStatusPublished,
       variant: isDraft ? CsChipVariant.amber : CsChipVariant.success,
     );
   }
@@ -3650,13 +3645,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   String _statusLabel(String status) {
     switch (status) {
       case 'yes':
-        return 'Zugesagt';
+        return l10n.availYes;
       case 'no':
-        return 'Abgesagt';
+        return l10n.availNo;
       case 'maybe':
-        return 'Unsicher';
+        return l10n.availMaybe;
       default:
-        return 'Keine Antwort';
+        return l10n.availNoResponse;
     }
   }
 
