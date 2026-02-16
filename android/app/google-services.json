@@ -7,6 +7,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:73144175672:android:3e5f9e16dec0b9fa83aacd",
+        "android_client_info": {
+          "package_name": "ch.onewell.lineup"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBztiWfbtYtks0OluID8Ud2PHm3daDr4-k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:73144175672:android:6f218e1de41746e383aacd",
         "android_client_info": {
           "package_name": "com.example.swisscourt"

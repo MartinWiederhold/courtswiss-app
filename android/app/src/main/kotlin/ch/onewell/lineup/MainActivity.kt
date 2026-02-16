@@ -1,4 +1,4 @@
-package com.example.swisscourt
+package ch.onewell.lineup
 
 import io.flutter.embedding.android.FlutterActivity
 
