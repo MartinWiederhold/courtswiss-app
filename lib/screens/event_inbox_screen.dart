@@ -144,8 +144,10 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
   Future<void> _markAllRead() async {
     try {
       await EventService.markAllRead();
+      if (!mounted) return;
       _load();
     } catch (e) {
+      debugPrint('EventInbox: markAllRead failed: $e');
       if (!mounted) return;
       CsToast.error(context, AppLocalizations.of(context)!.eventsLoadError);
     }
@@ -156,10 +158,11 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
     final removed = ev;
     setState(() => _events.removeAt(index));
     try {
-      await EventService.markRead(ev['id'] as String);
+      await EventService.dismissEvent(ev['id'] as String);
     } catch (e) {
       if (!mounted) return;
       setState(() => _events.insert(index, removed));
+      CsToast.error(context, AppLocalizations.of(context)!.notifDeleteError);
     }
   }
 
@@ -188,13 +191,14 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
     if (confirmed != true) return;
 
     try {
-      await EventService.markAllRead();
+      await EventService.dismissAllEvents();
       if (!mounted) return;
-      _load();
+      setState(() => _events.clear());
       CsToast.success(context, l.allNotifsDeleted);
     } catch (e) {
+      debugPrint('EventInbox: deleteAll failed: $e');
       if (!mounted) return;
-      CsToast.error(context, l.eventsLoadError);
+      CsToast.error(context, l.notifDeleteError);
     }
   }
 

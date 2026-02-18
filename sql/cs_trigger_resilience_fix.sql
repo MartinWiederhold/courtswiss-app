@@ -1675,6 +1675,158 @@ GRANT EXECUTE ON FUNCTION public.cs_leave_carpool(uuid) TO authenticated;
 
 
 -- ═══════════════════════════════════════════════════════════════════
+--  14b. ENSURE cs_event_reads TABLE + RPCs EXIST
+--       Required for "Alle gelesen" and "Alle löschen" in the inbox.
+--       dismissed_at: when set, the event is hidden from the user.
+-- ═══════════════════════════════════════════════════════════════════
+
+-- Table for tracking which events a user has read / dismissed
+CREATE TABLE IF NOT EXISTS public.cs_event_reads (
+  event_id  uuid        NOT NULL REFERENCES public.cs_events(id) ON DELETE CASCADE,
+  user_id   uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  read_at   timestamptz NOT NULL DEFAULT now(),
+  dismissed_at timestamptz,
+  PRIMARY KEY (event_id, user_id)
+);
+
+-- Add dismissed_at column if table already existed without it
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'cs_event_reads'
+      AND column_name = 'dismissed_at'
+  ) THEN
+    ALTER TABLE public.cs_event_reads ADD COLUMN dismissed_at timestamptz;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_cs_event_reads_user_read
+  ON public.cs_event_reads (user_id, read_at DESC);
+
+ALTER TABLE public.cs_event_reads ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS cs_event_reads_select ON public.cs_event_reads;
+CREATE POLICY cs_event_reads_select ON public.cs_event_reads
+  FOR SELECT USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS cs_event_reads_insert ON public.cs_event_reads;
+CREATE POLICY cs_event_reads_insert ON public.cs_event_reads
+  FOR INSERT WITH CHECK (
+    user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.cs_events e
+      WHERE e.id = event_id
+        AND public.is_team_member(e.team_id)
+    )
+  );
+
+DROP POLICY IF EXISTS cs_event_reads_update ON public.cs_event_reads;
+CREATE POLICY cs_event_reads_update ON public.cs_event_reads
+  FOR UPDATE USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS cs_event_reads_delete ON public.cs_event_reads;
+CREATE POLICY cs_event_reads_delete ON public.cs_event_reads
+  FOR DELETE USING (user_id = auth.uid());
+
+-- RPC: Mark a single event as read (idempotent)
+DROP FUNCTION IF EXISTS public.cs_mark_event_read(uuid);
+CREATE OR REPLACE FUNCTION public.cs_mark_event_read(p_event_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.cs_event_reads (event_id, user_id, read_at)
+  VALUES (p_event_id, auth.uid(), now())
+  ON CONFLICT (event_id, user_id) DO UPDATE SET read_at = COALESCE(cs_event_reads.read_at, now());
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.cs_mark_event_read(uuid) TO authenticated;
+
+-- RPC: Mark ALL visible events as read
+DROP FUNCTION IF EXISTS public.cs_mark_all_events_read();
+CREATE OR REPLACE FUNCTION public.cs_mark_all_events_read()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.cs_event_reads (event_id, user_id, read_at)
+  SELECT e.id, auth.uid(), now()
+  FROM public.cs_events e
+  WHERE public.is_team_member(e.team_id)
+    AND (e.recipient_user_id IS NULL OR e.recipient_user_id = auth.uid())
+    AND NOT EXISTS (
+      SELECT 1 FROM public.cs_event_reads er
+      WHERE er.event_id = e.id AND er.user_id = auth.uid()
+    )
+  ON CONFLICT (event_id, user_id) DO UPDATE SET read_at = COALESCE(cs_event_reads.read_at, now());
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.cs_mark_all_events_read() TO authenticated;
+
+-- RPC: Dismiss (hide) a single event for the current user
+DROP FUNCTION IF EXISTS public.cs_dismiss_event(uuid);
+CREATE OR REPLACE FUNCTION public.cs_dismiss_event(p_event_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.cs_event_reads (event_id, user_id, read_at, dismissed_at)
+  VALUES (p_event_id, auth.uid(), now(), now())
+  ON CONFLICT (event_id, user_id) DO UPDATE SET dismissed_at = now();
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.cs_dismiss_event(uuid) TO authenticated;
+
+-- RPC: Dismiss (hide) ALL visible events for the current user
+DROP FUNCTION IF EXISTS public.cs_dismiss_all_events();
+CREATE OR REPLACE FUNCTION public.cs_dismiss_all_events()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.cs_event_reads (event_id, user_id, read_at, dismissed_at)
+  SELECT e.id, auth.uid(), now(), now()
+  FROM public.cs_events e
+  WHERE public.is_team_member(e.team_id)
+    AND (e.recipient_user_id IS NULL OR e.recipient_user_id = auth.uid())
+  ON CONFLICT (event_id, user_id) DO UPDATE SET dismissed_at = now();
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.cs_dismiss_all_events() TO authenticated;
+
+-- RPC: Unread event count (for badge) – excludes dismissed
+DROP FUNCTION IF EXISTS public.cs_unread_event_count();
+CREATE OR REPLACE FUNCTION public.cs_unread_event_count()
+RETURNS int
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT count(*)::int
+  FROM public.cs_events e
+  WHERE public.is_team_member(e.team_id)
+    AND (e.recipient_user_id IS NULL OR e.recipient_user_id = auth.uid())
+    AND NOT EXISTS (
+      SELECT 1 FROM public.cs_event_reads er
+      WHERE er.event_id = e.id AND er.user_id = auth.uid()
+        AND (er.read_at IS NOT NULL OR er.dismissed_at IS NOT NULL)
+    );
+$$;
+GRANT EXECUTE ON FUNCTION public.cs_unread_event_count() TO authenticated;
+
+
+-- ═══════════════════════════════════════════════════════════════════
 --  15. DIAGNOSTIC: Verify everything
 -- ═══════════════════════════════════════════════════════════════════
 
@@ -1767,6 +1919,36 @@ BEGIN
     RAISE NOTICE 'OK: fn_emit_carpool_passenger_left_event() exists';
   END IF;
 
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'cs_mark_event_read') THEN
+    RAISE WARNING 'cs_mark_event_read RPC NOT found!';
+  ELSE
+    RAISE NOTICE 'OK: cs_mark_event_read() exists';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'cs_mark_all_events_read') THEN
+    RAISE WARNING 'cs_mark_all_events_read RPC NOT found!';
+  ELSE
+    RAISE NOTICE 'OK: cs_mark_all_events_read() exists';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'cs_unread_event_count') THEN
+    RAISE WARNING 'cs_unread_event_count RPC NOT found!';
+  ELSE
+    RAISE NOTICE 'OK: cs_unread_event_count() exists';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'cs_dismiss_event') THEN
+    RAISE WARNING 'cs_dismiss_event RPC NOT found!';
+  ELSE
+    RAISE NOTICE 'OK: cs_dismiss_event() exists';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'cs_dismiss_all_events') THEN
+    RAISE WARNING 'cs_dismiss_all_events RPC NOT found!';
+  ELSE
+    RAISE NOTICE 'OK: cs_dismiss_all_events() exists';
+  END IF;
+
   -- Check RLS policies for key tables
   SELECT count(*) INTO v_count FROM pg_policies WHERE tablename = 'cs_match_availability';
   RAISE NOTICE 'cs_match_availability has % RLS policies', v_count;
@@ -1776,6 +1958,9 @@ BEGIN
 
   SELECT count(*) INTO v_count FROM pg_policies WHERE tablename = 'cs_events';
   RAISE NOTICE 'cs_events has % RLS policies', v_count;
+
+  SELECT count(*) INTO v_count FROM pg_policies WHERE tablename = 'cs_event_reads';
+  RAISE NOTICE 'cs_event_reads has % RLS policies', v_count;
 
   SELECT count(*) INTO v_count FROM pg_policies WHERE tablename = 'cs_carpool_offers';
   RAISE NOTICE 'cs_carpool_offers has % RLS policies', v_count;

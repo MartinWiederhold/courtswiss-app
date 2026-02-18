@@ -9,7 +9,7 @@ import '../services/invite_service.dart';
 import '../services/member_service.dart';
 import '../services/avatar_service.dart';
 import '../services/match_service.dart';
-import '../services/notification_service.dart';
+import '../services/event_service.dart';
 import '../services/push_service.dart' show navigatorKey;
 import '../services/team_player_service.dart';
 import '../theme/cs_theme.dart';
@@ -17,8 +17,8 @@ import '../widgets/ranking_selector.dart';
 import '../widgets/ui/ui.dart';
 import 'claim_screen.dart';
 import 'create_match_screen.dart';
+import 'event_inbox_screen.dart';
 import 'match_detail_screen.dart';
-import 'notifications_screen.dart';
 
 class TeamDetailScreen extends StatefulWidget {
   final String teamId;
@@ -89,7 +89,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
   Future<void> _loadUnreadCount() async {
     try {
-      final count = await NotificationService.getUnreadCount();
+      final count = await EventService.fetchUnreadCount();
       if (mounted) setState(() => _unreadCount = count);
     } catch (_) {}
   }
@@ -97,7 +97,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   Future<void> _openNotifications() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+      MaterialPageRoute(builder: (_) => const EventInboxScreen()),
     );
     _loadUnreadCount();
   }

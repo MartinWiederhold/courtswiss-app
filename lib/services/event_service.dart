@@ -55,6 +55,7 @@ class EventService {
   /// Load events visible to the current user (newest first).
   /// Each event includes a `cs_event_reads` array: empty = unread,
   /// `[{read_at: ...}]` = read.
+  /// Events that have been dismissed (dismissed_at IS NOT NULL) are filtered out.
   ///
   /// [teamId] – optional filter; when non-null only events for that team
   /// are returned.
@@ -68,18 +69,32 @@ class EventService {
       // RLS on cs_event_reads filters to auth.uid() reads only.
       var query = _supabase
           .from('cs_events')
-          .select('*, cs_event_reads(read_at)');
+          .select('*, cs_event_reads(read_at, dismissed_at)');
       if (teamId != null) {
         query = query.eq('team_id', teamId);
       }
       final rows = await query
           .order('created_at', ascending: false)
           .limit(limit);
-      return List<Map<String, dynamic>>.from(rows);
+      final all = List<Map<String, dynamic>>.from(rows);
+      // Filter out dismissed events (dismissed_at is set)
+      return all.where((e) => !_isDismissed(e)).toList();
     } catch (e) {
       debugPrint('EventService.fetchEvents embed failed, falling back: $e');
       return _fetchEventsFallback(limit: limit, teamId: teamId);
     }
+  }
+
+  /// Check if an event has been dismissed by the current user.
+  static bool _isDismissed(Map<String, dynamic> event) {
+    final reads = event['cs_event_reads'];
+    if (reads is List && reads.isNotEmpty) {
+      final first = reads[0];
+      if (first is Map<String, dynamic>) {
+        return first['dismissed_at'] != null;
+      }
+    }
+    return false;
   }
 
   /// Fallback: two separate queries (events + reads), merged in Dart.
@@ -104,21 +119,25 @@ class EventService {
 
     final reads = await _supabase
         .from('cs_event_reads')
-        .select('event_id, read_at')
+        .select('event_id, read_at, dismissed_at')
         .eq('user_id', uid)
         .inFilter('event_id', ids);
 
-    final readMap = <String, String?>{};
+    final readMap = <String, Map<String, dynamic>>{};
     for (final r in List<Map<String, dynamic>>.from(reads)) {
-      readMap[r['event_id'] as String] = r['read_at'] as String?;
+      readMap[r['event_id'] as String] = r;
     }
 
-    return eventList.map((e) {
+    return eventList.where((e) {
+      final readInfo = readMap[e['id'] as String];
+      // Filter out dismissed events
+      return readInfo == null || readInfo['dismissed_at'] == null;
+    }).map((e) {
       final map = Map<String, dynamic>.from(e);
-      final readAt = readMap[e['id'] as String];
-      map['cs_event_reads'] = readAt != null
+      final readInfo = readMap[e['id'] as String];
+      map['cs_event_reads'] = readInfo != null
           ? [
-              {'read_at': readAt},
+              {'read_at': readInfo['read_at'], 'dismissed_at': readInfo['dismissed_at']},
             ]
           : <Map<String, dynamic>>[];
       return map;
@@ -146,6 +165,16 @@ class EventService {
   /// Mark all visible events as read.
   static Future<void> markAllRead() async {
     await _supabase.rpc('cs_mark_all_events_read');
+  }
+
+  /// Dismiss (permanently hide) a single event for the current user.
+  static Future<void> dismissEvent(String eventId) async {
+    await _supabase.rpc('cs_dismiss_event', params: {'p_event_id': eventId});
+  }
+
+  /// Dismiss (permanently hide) all events for the current user.
+  static Future<void> dismissAllEvents() async {
+    await _supabase.rpc('cs_dismiss_all_events');
   }
 
   // ── Display helpers ──────────────────────────────────────────
