@@ -38,10 +38,7 @@ DECLARE
   v_title       text;
   v_body        text;
 BEGIN
-  -- Skip if UPDATE and status didn't change
-  IF TG_OP = 'UPDATE' AND OLD.status = NEW.status THEN
-    RETURN NEW;
-  END IF;
+  -- No skip logic: captain gets notified on EVERY click
 
   -- Resolve team_id + opponent from the match
   SELECT m.team_id, m.opponent
@@ -127,10 +124,7 @@ DECLARE
   v_title       text;
   v_body        text;
 BEGIN
-  -- Skip if UPDATE and status didn't change
-  IF TG_OP = 'UPDATE' AND OLD.status = NEW.status THEN
-    RETURN NEW;
-  END IF;
+  -- No skip logic: captain gets notified on EVERY click
 
   -- Resolve team_id + opponent from match
   SELECT m.team_id, m.opponent

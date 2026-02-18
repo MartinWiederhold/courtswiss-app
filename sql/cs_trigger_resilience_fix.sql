@@ -21,8 +21,22 @@
 
 
 -- ═══════════════════════════════════════════════════════════════════
---  0. PREREQUISITES: Ensure helper functions exist
---     (idempotent – same as cs_rls_helpers_and_expenses_fix.sql)
+--  0a. CLEANUP: Remove old/conflicting triggers
+--      The old cs_on_event_create_enqueue_push trigger on cs_events
+--      tries to insert into cs_push_jobs with recipient_user_id.
+--      Events using recipient_filter (like dinner/availability) have
+--      recipient_user_id = NULL, which violates the NOT NULL constraint
+--      on cs_push_jobs.user_id and causes the entire transaction to fail.
+--      Our pipeline uses: cs_events → fn_cs_event_fanout → cs_event_deliveries
+-- ═══════════════════════════════════════════════════════════════════
+DROP TRIGGER IF EXISTS trg_cs_events_enqueue_push ON public.cs_events;
+DROP TRIGGER IF EXISTS trg_on_event_create_enqueue_push ON public.cs_events;
+DROP TRIGGER IF EXISTS cs_on_event_create_enqueue_push ON public.cs_events;
+DROP FUNCTION IF EXISTS public.cs_on_event_create_enqueue_push();
+
+-- ═══════════════════════════════════════════════════════════════════
+--  0b. PREREQUISITES: Ensure helper functions exist
+--      (idempotent – same as cs_rls_helpers_and_expenses_fix.sql)
 -- ═══════════════════════════════════════════════════════════════════
 
 CREATE OR REPLACE FUNCTION public.is_team_member(p_team_id uuid)
@@ -223,10 +237,8 @@ DECLARE
   v_title       text;
   v_body        text;
 BEGIN
-  -- Skip if UPDATE and status didn't change
-  IF TG_OP = 'UPDATE' AND OLD.status = NEW.status THEN
-    RETURN NEW;
-  END IF;
+  -- No skip logic: captain gets notified on EVERY click,
+  -- even if the status is the same as before.
 
   BEGIN
     -- Resolve team_id + opponent from the match
@@ -278,7 +290,7 @@ BEGIN
       ),
       NEW.user_id,
       'captain'
-      -- No dedupe_key: captain gets notified on EVERY status change
+      -- No dedupe_key: captain gets notified on EVERY click
     );
   EXCEPTION WHEN OTHERS THEN
     -- Log but do NOT block the availability change
@@ -316,10 +328,8 @@ DECLARE
   v_title       text;
   v_body        text;
 BEGIN
-  -- Skip if UPDATE and status didn't change
-  IF TG_OP = 'UPDATE' AND OLD.status = NEW.status THEN
-    RETURN NEW;
-  END IF;
+  -- No skip logic: captain gets notified on EVERY click,
+  -- even if the status is the same as before.
 
   BEGIN
     -- Resolve team_id + opponent from match
@@ -377,7 +387,7 @@ BEGIN
       ),
       NEW.user_id,
       'captain'
-      -- No dedupe_key: captain gets notified on EVERY status change
+      -- No dedupe_key: captain gets notified on EVERY click
     );
   EXCEPTION WHEN OTHERS THEN
     -- Log but do NOT block the dinner RSVP change
