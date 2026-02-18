@@ -401,6 +401,7 @@
   "noCarpoolsYet": "No carpools yet.",
   "noCarpoolsHint": "No carpools yet. Offer a ride.",
   "youSuffix": "(you)",
+  "carpoolFull": "Full",
   "joinRideButton": "Join ride",
   "leaveRideButton": "Leave ride",
   "joinedRideToast": "You joined the ride",
@@ -689,5 +690,14 @@
       "inName": { "type": "String" },
       "outName": { "type": "String" }
     }
-  }
+  },
+
+  "editExpenseTitle": "Edit expense",
+  "expenseUpdatedToast": "Expense \u201c{title}\u201d updated",
+  "@expenseUpdatedToast": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "editExpenseTooltip": "Edit expense"
 }

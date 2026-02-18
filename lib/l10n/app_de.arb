@@ -436,6 +436,7 @@
   "noCarpoolsYet": "Noch keine Fahrgemeinschaften vorhanden.",
   "noCarpoolsHint": "Noch keine Fahrgemeinschaften. Biete eine Mitfahrgelegenheit an.",
   "youSuffix": "(du)",
+  "carpoolFull": "Voll",
   "joinRideButton": "Mitfahren",
   "leaveRideButton": "Aussteigen",
   "joinedRideToast": "Du f\u00e4hrst mit",
@@ -724,5 +725,14 @@
       "inName": { "type": "String" },
       "outName": { "type": "String" }
     }
-  }
+  },
+
+  "editExpenseTitle": "Ausgabe bearbeiten",
+  "expenseUpdatedToast": "Ausgabe \u201e{title}\u201c aktualisiert",
+  "@expenseUpdatedToast": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "editExpenseTooltip": "Ausgabe bearbeiten"
 }

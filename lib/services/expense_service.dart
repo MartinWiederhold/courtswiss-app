@@ -102,6 +102,28 @@ class ExpenseService {
     debugPrint('EXPENSE_MARK_PAID: success');
   }
 
+  /// Update an expense's title, amount and/or note.
+  /// Only the person who paid (or captain via RLS) can update.
+  static Future<void> updateExpense({
+    required String expenseId,
+    required String title,
+    required int amountCents,
+    String? note,
+  }) async {
+    debugPrint(
+      'EXPENSE_UPDATE: expenseId=$expenseId title=$title '
+      'amountCents=$amountCents uid=${_supabase.auth.currentUser?.id}',
+    );
+
+    await _supabase.from('cs_expenses').update({
+      'title': title,
+      'amount_cents': amountCents,
+      'note': note,
+    }).eq('id', expenseId);
+
+    debugPrint('EXPENSE_UPDATE: success');
+  }
+
   /// Delete an expense (only allowed for the person who paid, or captain).
   static Future<void> deleteExpense(String expenseId) async {
     debugPrint(

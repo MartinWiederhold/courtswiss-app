@@ -111,25 +111,25 @@ BEGIN
   --    - Must NOT have a pending/accepted sub request for this match
   --    - Must have availability = 'yes' (or no response, depending on policy)
   --    - Order by ranking (best first via cs_team_players)
-  SELECT tp.user_id INTO v_sub_user_id
+  SELECT tp.claimed_by INTO v_sub_user_id
   FROM public.cs_team_players tp
   JOIN public.cs_team_members tm
-    ON tm.team_id = v_team_id AND tm.user_id = tp.user_id
+    ON tm.team_id = v_team_id AND tm.user_id = tp.claimed_by
   WHERE tp.team_id = v_team_id
-    AND tp.user_id IS NOT NULL
-    AND tp.user_id <> p_original_user_id
+    AND tp.claimed_by IS NOT NULL
+    AND tp.claimed_by <> p_original_user_id
     -- Not already a starter in this match
     AND NOT EXISTS (
       SELECT 1 FROM public.cs_match_lineup_slots ls
       WHERE ls.match_id = p_match_id
-        AND ls.user_id  = tp.user_id
+        AND ls.user_id  = tp.claimed_by
         AND ls.slot_type = 'starter'
     )
     -- Not already asked (pending) or accepted for this match
     AND NOT EXISTS (
       SELECT 1 FROM public.cs_sub_requests sr
       WHERE sr.match_id           = p_match_id
-        AND sr.substitute_user_id = tp.user_id
+        AND sr.substitute_user_id = tp.claimed_by
         AND sr.status IN ('pending', 'accepted')
     )
     -- Has availability 'yes' or has not responded yet
@@ -137,13 +137,13 @@ BEGIN
       EXISTS (
         SELECT 1 FROM public.cs_match_availability ma
         WHERE ma.match_id = p_match_id
-          AND ma.user_id  = tp.user_id
+          AND ma.user_id  = tp.claimed_by
           AND ma.status   = 'yes'
       )
       OR NOT EXISTS (
         SELECT 1 FROM public.cs_match_availability ma
         WHERE ma.match_id = p_match_id
-          AND ma.user_id  = tp.user_id
+          AND ma.user_id  = tp.claimed_by
       )
     )
   ORDER BY tp.ranking ASC NULLS LAST
@@ -160,7 +160,7 @@ BEGIN
   -- 4. Get substitute name for response
   SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_sub_name
   FROM public.cs_team_players tp
-  WHERE tp.team_id = v_team_id AND tp.user_id = v_sub_user_id
+  WHERE tp.team_id = v_team_id AND tp.claimed_by = v_sub_user_id
   LIMIT 1;
 
   -- 5. Insert the pending request
@@ -272,12 +272,12 @@ BEGIN
     -- Get names for the event
     SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_sub_name
     FROM public.cs_team_players tp
-    WHERE tp.team_id = v_req.team_id AND tp.user_id = v_req.substitute_user_id
+    WHERE tp.team_id = v_req.team_id AND tp.claimed_by = v_req.substitute_user_id
     LIMIT 1;
 
     SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_original_name
     FROM public.cs_team_players tp
-    WHERE tp.team_id = v_req.team_id AND tp.user_id = v_req.original_user_id
+    WHERE tp.team_id = v_req.team_id AND tp.claimed_by = v_req.original_user_id
     LIMIT 1;
 
     -- Broadcast event: substitute accepted

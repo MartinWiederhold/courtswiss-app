@@ -173,6 +173,16 @@ class NotificationService {
         return 'Neue Fahrgemeinschaft';
       case 'carpool_passenger_joined':
         return 'Mitfahrer';
+      case 'carpool_passenger_left':
+        return 'Mitfahrer ausgestiegen';
+      case 'sub_request':
+        return l?.notifTitleSubRequest ?? 'Ersatzanfrage';
+      case 'sub_accepted':
+        return 'Ersatz bestätigt';
+      case 'sub_declined':
+        return 'Ersatz abgelehnt';
+      case 'sub_chain_next':
+        return 'Nächster Ersatz angefragt';
       case 'match_reminder_24h':
         return 'Spielerinnerung – morgen';
       case 'match_reminder_2h':
@@ -294,6 +304,24 @@ class NotificationService {
       case 'carpool_passenger_joined':
         final passenger = p['passenger_name'] ?? '?';
         return '$passenger fährt bei dir mit';
+      case 'carpool_passenger_left':
+        final passengerLeft = p['passenger_name'] ?? '?';
+        return '$passengerLeft fährt nicht mehr mit';
+      case 'sub_request':
+        final origName = p['original_name'] ?? '?';
+        return 'Du wurdest als Ersatz angefragt für $origName';
+      case 'sub_accepted':
+        final subName = p['substitute_name'] ?? '?';
+        final origNameAcc = p['original_name'] ?? '?';
+        return '$subName ersetzt $origNameAcc';
+      case 'sub_declined':
+        final declinedName = p['substitute_name'] ?? '?';
+        final origNameDec = p['original_name'] ?? '?';
+        return '$declinedName hat die Ersatzanfrage abgelehnt (für $origNameDec)';
+      case 'sub_chain_next':
+        final nextName = p['next_substitute_name'] ?? '?';
+        final origNameChain = p['original_name'] ?? '?';
+        return '$nextName wurde als nächster Ersatz angefragt (für $origNameChain)';
       case 'match_reminder_24h':
         return 'Morgen steht ein Match an – sei bereit!';
       case 'match_reminder_2h':

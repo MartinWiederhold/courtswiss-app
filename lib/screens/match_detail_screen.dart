@@ -80,6 +80,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
   // ── Realtime subscription for lineup changes ──
   RealtimeChannel? _lineupChannel;
+  RealtimeChannel? _lineupStatusChannel;
+  RealtimeChannel? _availabilityChannel;
 
   // ── Generate-dialog defaults (overridden from lineup row if exists) ──
   int _starterCount = 6;
@@ -100,6 +102,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     _match = Map.of(widget.match);
     _load();
     _subscribeLineupChanges();
+    _subscribeLineupStatusChanges();
+    _subscribeAvailabilityChanges();
     _subscribeCarpoolChanges();
   }
 
@@ -112,6 +116,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   @override
   void dispose() {
     _lineupChannel?.unsubscribe();
+    _lineupStatusChannel?.unsubscribe();
+    _availabilityChannel?.unsubscribe();
     _carpoolOffersChannel?.unsubscribe();
     _carpoolPassengersChannel?.unsubscribe();
     super.dispose();
@@ -135,6 +141,78 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           ),
           callback: (payload) {
             debugPrint('LINEUP_REALTIME: slot change detected, reloading…');
+            _reloadLineup();
+          },
+        )
+        .subscribe();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Realtime: auto-reload when availability changes
+  //  (so captain/players see live updates)
+  // ═══════════════════════════════════════════════════════════
+
+  void _subscribeAvailabilityChanges() {
+    _availabilityChannel = _supabase
+        .channel('availability:${widget.matchId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'cs_match_availability',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'match_id',
+            value: widget.matchId,
+          ),
+          callback: (payload) {
+            debugPrint('AVAILABILITY_RT: change detected, reloading…');
+            _reloadAvailability();
+          },
+        )
+        .subscribe();
+  }
+
+  /// Reload only availability data (not the full page).
+  Future<void> _reloadAvailability() async {
+    try {
+      final avail = await MatchService.listAvailability(widget.matchId);
+      final uid = _supabase.auth.currentUser?.id;
+      String? myStatus;
+      for (final a in avail) {
+        if (a['user_id'] == uid) {
+          myStatus = a['status'] as String?;
+          break;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _availability = avail;
+        _myStatus = myStatus;
+      });
+    } catch (e) {
+      debugPrint('Availability reload error: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Realtime: auto-reload when lineup master row changes
+  //  (e.g. status draft → published)
+  // ═══════════════════════════════════════════════════════════
+
+  void _subscribeLineupStatusChanges() {
+    _lineupStatusChannel = _supabase
+        .channel('lineup_status:${widget.matchId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'cs_match_lineups',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'match_id',
+            value: widget.matchId,
+          ),
+          callback: (payload) {
+            debugPrint('LINEUP_STATUS_RT: lineup row changed, reloading…');
             _reloadLineup();
           },
         )
@@ -2120,16 +2198,37 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
                   // ── Progress bar (seats) ──
                   const SizedBox(height: 10),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: SizedBox(
-                      height: 6,
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        backgroundColor: CsColors.gray200,
-                        valueColor: AlwaysStoppedAnimation<Color>(CsColors.emerald),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: SizedBox(
+                            height: 6,
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              backgroundColor: CsColors.gray200,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                offer.isFull ? CsColors.error : CsColors.emerald,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Text(
+                        offer.isFull
+                            ? l10n.carpoolFull
+                            : l10n.slotsFree('${offer.seatsAvailable}'),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: offer.isFull
+                              ? CsColors.error
+                              : CsColors.gray500,
+                        ),
+                      ),
+                    ],
                   ),
 
                   // ── Expanded content ──
@@ -2514,25 +2613,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Title row
-              Row(
-                children: [
-                  Icon(Icons.restaurant_outlined, size: 18, color: CsColors.gray900),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      l10n.sectionDinner,
-                      style: CsTextStyles.titleSmall.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: CsColors.gray900,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
               // Counts row
-              const SizedBox(height: 10),
               Row(
                 children: [
                   _neutralCount(Icons.check_circle_outline, yesCount),
@@ -2884,25 +2965,14 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      l10n.sectionExpenses,
-                      style: CsTextStyles.titleSmall.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: CsColors.gray900,
-                      ),
-                    ),
-                  ),
-                  if (_expenses.isNotEmpty)
-                    CsStatusChip(
-                      label: 'CHF ${totalCHF.toStringAsFixed(2)}',
-                      variant: CsChipVariant.amber,
-                    ),
-                ],
-              ),
               if (_expenses.isNotEmpty) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: CsStatusChip(
+                    label: 'CHF ${totalCHF.toStringAsFixed(2)}',
+                    variant: CsChipVariant.amber,
+                  ),
+                ),
                 const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3016,22 +3086,62 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 '${expense.note != null && expense.note!.isNotEmpty ? '\n${expense.note}' : ''}',
                 style: CsTextStyles.bodySmall,
               ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    l10n.perPersonAmountLabel(expense.perPersonFormatted),
-                    style: CsTextStyles.labelSmall,
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        l10n.perPersonAmountLabel(expense.perPersonFormatted),
+                        style: CsTextStyles.labelSmall,
+                      ),
+                      Text(
+                        l10n.paidOfShareCount('${expense.paidCount}', '${expense.shareCount}'),
+                        style: CsTextStyles.labelSmall.copyWith(
+                          color: expense.openCount == 0
+                              ? CsColors.success
+                              : CsColors.warning,
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    l10n.paidOfShareCount('${expense.paidCount}', '${expense.shareCount}'),
-                    style: CsTextStyles.labelSmall.copyWith(
-                      color: expense.openCount == 0
-                          ? CsColors.success
-                          : CsColors.warning,
+                  if (isPaidByMe || _isAdmin)
+                    PopupMenuButton<String>(
+                      icon: Icon(Icons.more_vert, size: 20, color: CsColors.gray500),
+                      padding: EdgeInsets.zero,
+                      splashRadius: 18,
+                      onSelected: (value) {
+                        if (value == 'edit') {
+                          _showEditExpenseDialog(expense);
+                        } else if (value == 'delete') {
+                          _confirmDeleteExpense(expense);
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_outlined, size: 18, color: CsColors.gray600),
+                              const SizedBox(width: 8),
+                              Text(l10n.editExpenseTooltip),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline, size: 18, color: CsColors.error),
+                              const SizedBox(width: 8),
+                              Text(l10n.deleteExpenseTooltip, style: TextStyle(color: CsColors.error)),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
                 ],
               ),
               children: [
@@ -3078,23 +3188,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                           ),
                   );
                 }),
-                if (isPaidByMe)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 8, right: 8),
-                      child: IconButton(
-                        onPressed: () => _confirmDeleteExpense(expense),
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        color: CsColors.error,
-                        tooltip: l10n.deleteExpenseTooltip,
-                        style: IconButton.styleFrom(
-                          minimumSize: const Size(36, 36),
-                          padding: const EdgeInsets.all(6),
-                        ),
-                      ),
-                    ),
-                  ),
               ],
             ),
           );
@@ -3252,6 +3345,98 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       CsToast.success(context, l10n.expenseDeletedToast(expense.title));
     } catch (e) {
       debugPrint('EXPENSE_DELETE ERROR: $e');
+      if (!mounted) return;
+      CsToast.error(context, l10n.genericError);
+    }
+  }
+
+  Future<void> _showEditExpenseDialog(Expense expense) async {
+    final titleCtrl = TextEditingController(text: expense.title);
+    final amountCtrl = TextEditingController(
+      text: expense.amountDouble.toStringAsFixed(2),
+    );
+    final noteCtrl = TextEditingController(text: expense.note ?? '');
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (ctx) => CsBottomSheetForm(
+        title: l10n.editExpenseTitle,
+        ctaLabel: l10n.save,
+        onCta: () => Navigator.pop(ctx, true),
+        secondaryLabel: l10n.cancel,
+        onSecondary: () => Navigator.pop(ctx, false),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: titleCtrl,
+              decoration: InputDecoration(
+                labelText: l10n.expenseTitleField,
+                hintText: l10n.expenseTitleHint,
+              ),
+              textCapitalization: TextCapitalization.sentences,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: amountCtrl,
+              decoration: InputDecoration(
+                labelText: l10n.expenseAmountField,
+                hintText: l10n.expenseAmountHint,
+                prefixText: l10n.currencyPrefix,
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: noteCtrl,
+              decoration: InputDecoration(
+                labelText: l10n.noteOptional,
+                hintText: l10n.expenseNoteHint,
+              ),
+              textCapitalization: TextCapitalization.sentences,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final title = titleCtrl.text.trim();
+    final amountText = amountCtrl.text.trim().replaceAll(',', '.');
+    final note = noteCtrl.text.trim();
+
+    if (title.isEmpty) {
+      if (!mounted) return;
+      CsToast.info(context, l10n.enterTitleValidation);
+      return;
+    }
+
+    final amount = double.tryParse(amountText);
+    if (amount == null || amount <= 0) {
+      if (!mounted) return;
+      CsToast.info(context, l10n.enterAmountValidation);
+      return;
+    }
+
+    try {
+      await ExpenseService.updateExpense(
+        expenseId: expense.id,
+        title: title,
+        amountCents: (amount * 100).round(),
+        note: note.isNotEmpty ? note : null,
+      );
+      await _reloadExpenses();
+      if (!mounted) return;
+      CsToast.success(context, l10n.expenseUpdatedToast(title));
+    } catch (e) {
+      debugPrint('EXPENSE_EDIT ERROR: $e');
       if (!mounted) return;
       CsToast.error(context, l10n.genericError);
     }

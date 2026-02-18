@@ -255,7 +255,7 @@ BEGIN
   SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_payer_name
   FROM public.cs_team_players tp
   WHERE tp.team_id = NEW.team_id
-    AND tp.user_id = NEW.paid_by_user_id
+    AND tp.claimed_by = NEW.paid_by_user_id
   LIMIT 1;
 
   -- Format amount: cents → "12.50 CHF"
@@ -341,7 +341,7 @@ BEGIN
   SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_player_name
   FROM public.cs_team_players tp
   WHERE tp.team_id = v_team_id
-    AND tp.user_id = NEW.user_id
+    AND tp.claimed_by = NEW.user_id
   LIMIT 1;
 
   INSERT INTO public.cs_events
@@ -398,7 +398,7 @@ BEGIN
   SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_driver_name
   FROM public.cs_team_players tp
   WHERE tp.team_id = NEW.team_id
-    AND tp.user_id = NEW.driver_user_id
+    AND tp.claimed_by = NEW.driver_user_id
   LIMIT 1;
 
   -- Resolve opponent from match

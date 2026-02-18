@@ -167,18 +167,21 @@ class _ClaimScreenState extends State<ClaimScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                     child: CsCard(
+                      backgroundColor: CsColors.white,
+                      borderColor: CsColors.gray200.withValues(alpha: 0.45),
+                      boxShadow: CsShadows.soft,
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
                           Icon(
                             Icons.group,
-                            color: CsColors.lime,
+                            color: CsColors.black,
                             size: 32,
                           ),
                           const SizedBox(height: 8),
                           Text(
                             widget.teamName,
-                            style: CsTextStyles.onDarkPrimary.copyWith(
+                            style: CsTextStyles.titleLarge.copyWith(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
                             ),
@@ -187,7 +190,7 @@ class _ClaimScreenState extends State<ClaimScreen> {
                           Text(
                             l.claimPickName,
                             textAlign: TextAlign.center,
-                            style: CsTextStyles.onDarkSecondary.copyWith(
+                            style: CsTextStyles.bodySmall.copyWith(
                               fontSize: 13,
                             ),
                           ),
@@ -257,13 +260,18 @@ class _ClaimScreenState extends State<ClaimScreen> {
     final ranking = TeamPlayerService.rankingLabel(player);
 
     return CsCard(
+      backgroundColor: CsColors.white,
+      borderColor: CsColors.gray200.withValues(alpha: 0.45),
+      boxShadow: CsShadows.soft,
+      splashColor: CsColors.black.withValues(alpha: 0.04),
+      highlightColor: CsColors.gray200.withValues(alpha: 0.3),
       onTap: _claiming ? null : () => _claim(player),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
           CircleAvatar(
             radius: 18,
-            backgroundColor: CsColors.blue.withValues(alpha: 0.15),
+            backgroundColor: CsColors.blue.withValues(alpha: 0.10),
             child: Text(
               _initials(player),
               style: const TextStyle(
@@ -280,21 +288,21 @@ class _ClaimScreenState extends State<ClaimScreen> {
               children: [
                 Text(
                   name,
-                  style: CsTextStyles.onDarkPrimary.copyWith(
+                  style: CsTextStyles.titleMedium.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 if (ranking.isNotEmpty)
                   Text(
                     ranking,
-                    style: CsTextStyles.onDarkTertiary.copyWith(fontSize: 12),
+                    style: CsTextStyles.bodySmall.copyWith(fontSize: 12),
                   ),
               ],
             ),
           ),
-          const Icon(
+          Icon(
             Icons.chevron_right,
-            color: CsColors.lime,
+            color: CsColors.gray400,
             size: 20,
           ),
         ],

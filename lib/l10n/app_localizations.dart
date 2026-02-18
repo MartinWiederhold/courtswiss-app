@@ -1730,6 +1730,12 @@ abstract class AppLocalizations {
   /// **'(du)'**
   String get youSuffix;
 
+  /// No description provided for @carpoolFull.
+  ///
+  /// In de, this message translates to:
+  /// **'Voll'**
+  String get carpoolFull;
+
   /// No description provided for @joinRideButton.
   ///
   /// In de, this message translates to:
@@ -2575,6 +2581,24 @@ abstract class AppLocalizations {
   /// In de, this message translates to:
   /// **'{inName} ersetzt {outName}'**
   String eventBodyReplaced(String inName, String outName);
+
+  /// No description provided for @editExpenseTitle.
+  ///
+  /// In de, this message translates to:
+  /// **'Ausgabe bearbeiten'**
+  String get editExpenseTitle;
+
+  /// No description provided for @expenseUpdatedToast.
+  ///
+  /// In de, this message translates to:
+  /// **'Ausgabe „{title}“ aktualisiert'**
+  String expenseUpdatedToast(String title);
+
+  /// No description provided for @editExpenseTooltip.
+  ///
+  /// In de, this message translates to:
+  /// **'Ausgabe bearbeiten'**
+  String get editExpenseTooltip;
 }
 
 class _AppLocalizationsDelegate

@@ -85,7 +85,7 @@ DROP POLICY IF EXISTS cs_carpool_passengers_insert ON public.cs_carpool_passenge
 CREATE POLICY cs_carpool_passengers_insert ON public.cs_carpool_passengers
   FOR INSERT
   WITH CHECK (
-    user_id = auth.uid()
+    passenger_user_id = auth.uid()
     AND EXISTS (
       SELECT 1 FROM public.cs_carpool_offers o
        WHERE o.id = offer_id
@@ -98,7 +98,7 @@ DROP POLICY IF EXISTS cs_carpool_passengers_delete ON public.cs_carpool_passenge
 CREATE POLICY cs_carpool_passengers_delete ON public.cs_carpool_passengers
   FOR DELETE
   USING (
-    user_id = auth.uid()
+    passenger_user_id = auth.uid()
     OR EXISTS (
       SELECT 1 FROM public.cs_carpool_offers o
        WHERE o.id = offer_id

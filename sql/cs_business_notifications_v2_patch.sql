@@ -57,7 +57,7 @@ BEGIN
   SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_player_name
   FROM public.cs_team_players tp
   WHERE tp.team_id = v_team_id
-    AND tp.user_id = NEW.user_id
+    AND tp.claimed_by = NEW.user_id
   LIMIT 1;
 
   -- Human-readable status
@@ -146,7 +146,7 @@ BEGIN
   SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_player_name
   FROM public.cs_team_players tp
   WHERE tp.team_id = v_team_id
-    AND tp.user_id = NEW.user_id
+    AND tp.claimed_by = NEW.user_id
   LIMIT 1;
 
   -- Human-readable status
@@ -232,7 +232,7 @@ BEGIN
   END IF;
 
   -- Don't notify if driver joins their own ride (shouldn't happen but be safe)
-  IF NEW.user_id = v_offer.driver_user_id THEN
+  IF NEW.passenger_user_id = v_offer.driver_user_id THEN
     RETURN NEW;
   END IF;
 
@@ -240,7 +240,7 @@ BEGIN
   SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_passenger_name
   FROM public.cs_team_players tp
   WHERE tp.team_id = v_offer.team_id
-    AND tp.user_id = NEW.user_id
+    AND tp.claimed_by = NEW.passenger_user_id
   LIMIT 1;
 
   -- Resolve opponent from match
@@ -265,12 +265,12 @@ BEGIN
       'match_id',       v_offer.match_id,
       'offer_id',       v_offer.id,
       'passenger_name', coalesce(v_passenger_name, '?'),
-      'user_id',        NEW.user_id
+      'user_id',        NEW.passenger_user_id
     ),
-    NEW.user_id,                    -- actor (passenger, excluded from push)
+    NEW.passenger_user_id,           -- actor (passenger, excluded from push)
     v_offer.driver_user_id,         -- targeted to driver only
     'team',                         -- filter = team (+ recipient_user_id restricts)
-    'carpool_join_' || v_offer.id || '_' || NEW.user_id
+    'carpool_join_' || v_offer.id || '_' || NEW.passenger_user_id
   );
 
   RETURN NEW;
@@ -326,7 +326,7 @@ BEGIN
   SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_debtor_name
   FROM public.cs_team_players tp
   WHERE tp.team_id = v_expense.team_id
-    AND tp.user_id = NEW.user_id
+    AND tp.claimed_by = NEW.user_id
   LIMIT 1;
 
   -- Format share amount
@@ -406,7 +406,7 @@ BEGIN
   SELECT CONCAT_WS(' ', tp.first_name, tp.last_name) INTO v_payer_name
   FROM public.cs_team_players tp
   WHERE tp.team_id = v_expense.team_id
-    AND tp.user_id = v_expense.paid_by_user_id
+    AND tp.claimed_by = v_expense.paid_by_user_id
   LIMIT 1;
 
   -- Format share amount

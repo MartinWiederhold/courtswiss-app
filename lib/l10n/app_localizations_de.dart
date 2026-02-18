@@ -910,6 +910,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get youSuffix => '(du)';
 
   @override
+  String get carpoolFull => 'Voll';
+
+  @override
   String get joinRideButton => 'Mitfahren';
 
   @override
@@ -1399,4 +1402,15 @@ class AppLocalizationsDe extends AppLocalizations {
   String eventBodyReplaced(String inName, String outName) {
     return '$inName ersetzt $outName';
   }
+
+  @override
+  String get editExpenseTitle => 'Ausgabe bearbeiten';
+
+  @override
+  String expenseUpdatedToast(String title) {
+    return 'Ausgabe „$title“ aktualisiert';
+  }
+
+  @override
+  String get editExpenseTooltip => 'Ausgabe bearbeiten';
 }

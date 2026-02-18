@@ -110,7 +110,6 @@ BEGIN
 
   -- 1b. Carpools
   PERFORM _cs_da_delete('cs_carpool_passengers', 'passenger_user_id', v_uid);
-  PERFORM _cs_da_delete('cs_carpool_passengers', 'user_id', v_uid);
   PERFORM _cs_da_delete('cs_carpool_offers',     'driver_user_id', v_uid);
 
   -- 1c. Lineups & roster
