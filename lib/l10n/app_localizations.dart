@@ -2599,6 +2599,54 @@ abstract class AppLocalizations {
   /// In de, this message translates to:
   /// **'Ausgabe bearbeiten'**
   String get editExpenseTooltip;
+
+  /// No description provided for @deleteAllNotifications.
+  ///
+  /// In de, this message translates to:
+  /// **'Alle löschen'**
+  String get deleteAllNotifications;
+
+  /// No description provided for @deleteNotificationConfirm.
+  ///
+  /// In de, this message translates to:
+  /// **'Benachrichtigung löschen?'**
+  String get deleteNotificationConfirm;
+
+  /// No description provided for @deleteAllNotificationsConfirm.
+  ///
+  /// In de, this message translates to:
+  /// **'Alle Benachrichtigungen löschen?'**
+  String get deleteAllNotificationsConfirm;
+
+  /// No description provided for @deleteAllNotificationsBody.
+  ///
+  /// In de, this message translates to:
+  /// **'Alle Benachrichtigungen werden unwiderruflich gelöscht.'**
+  String get deleteAllNotificationsBody;
+
+  /// No description provided for @notifDeleted.
+  ///
+  /// In de, this message translates to:
+  /// **'Benachrichtigung gelöscht'**
+  String get notifDeleted;
+
+  /// No description provided for @allNotifsDeleted.
+  ///
+  /// In de, this message translates to:
+  /// **'Alle Benachrichtigungen gelöscht'**
+  String get allNotifsDeleted;
+
+  /// No description provided for @notifDeleteError.
+  ///
+  /// In de, this message translates to:
+  /// **'Benachrichtigung konnte nicht gelöscht werden.'**
+  String get notifDeleteError;
+
+  /// No description provided for @undo.
+  ///
+  /// In de, this message translates to:
+  /// **'Rückgängig'**
+  String get undo;
 }
 
 class _AppLocalizationsDelegate

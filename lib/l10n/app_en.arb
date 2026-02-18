@@ -699,5 +699,14 @@
       "title": { "type": "String" }
     }
   },
-  "editExpenseTooltip": "Edit expense"
+  "editExpenseTooltip": "Edit expense",
+
+  "deleteAllNotifications": "Delete all",
+  "deleteNotificationConfirm": "Delete notification?",
+  "deleteAllNotificationsConfirm": "Delete all notifications?",
+  "deleteAllNotificationsBody": "All notifications will be permanently deleted.",
+  "notifDeleted": "Notification deleted",
+  "allNotifsDeleted": "All notifications deleted",
+  "notifDeleteError": "Couldn't delete notification.",
+  "undo": "Undo"
 }

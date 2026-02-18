@@ -151,6 +151,53 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
     }
   }
 
+  Future<void> _dismissEvent(int index) async {
+    final ev = _events[index];
+    final removed = ev;
+    setState(() => _events.removeAt(index));
+    try {
+      await EventService.markRead(ev['id'] as String);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _events.insert(index, removed));
+    }
+  }
+
+  Future<void> _deleteAllEvents() async {
+    final l = AppLocalizations.of(context)!;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.deleteAllNotificationsConfirm),
+        content: Text(l.deleteAllNotificationsBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: CsColors.error,
+            ),
+            child: Text(l.deleteAllNotifications),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await EventService.markAllRead();
+      if (!mounted) return;
+      _load();
+      CsToast.success(context, l.allNotifsDeleted);
+    } catch (e) {
+      if (!mounted) return;
+      CsToast.error(context, l.eventsLoadError);
+    }
+  }
+
   String _timeAgo(String? isoDate, AppLocalizations l) {
     if (isoDate == null) return '';
     final dt = DateTime.tryParse(isoDate)?.toLocal();
@@ -176,6 +223,12 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
             TextButton(
               onPressed: _markAllRead,
               child: Text(l.markAllRead),
+            ),
+          if (_events.isNotEmpty)
+            IconButton(
+              onPressed: _deleteAllEvents,
+              icon: const Icon(Icons.delete_outline_rounded),
+              tooltip: l.deleteAllNotifications,
             ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
@@ -247,97 +300,33 @@ class _EventInboxScreenState extends State<EventInboxScreen> {
 
                         return CsAnimatedEntrance.staggered(
                           index: i,
-                          child: CsCard(
-                            accentBarColor: isUnread ? CsColors.blue : null,
-                            onTap: () => _onTap(ev),
-                            padding: const EdgeInsets.all(14),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: (isUnread
-                                            ? CsColors.blue
-                                            : CsColors.gray500)
-                                        .withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(
-                                      CsRadii.sm,
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    EventService.eventIcon(eventType),
-                                    color: isUnread
-                                        ? CsColors.blue
-                                        : CsColors.gray400,
-                                    size: 18,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title,
-                                        style: CsTextStyles.onDarkPrimary
-                                            .copyWith(
-                                          fontWeight: isUnread
-                                              ? FontWeight.w700
-                                              : FontWeight.w500,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        body,
-                                        style: CsTextStyles.onDarkSecondary
-                                            .copyWith(fontSize: 12),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _timeAgo(
-                                          ev['created_at'] as String?,
-                                          l,
-                                        ),
-                                        style: CsTextStyles.onDarkTertiary
-                                            .copyWith(fontSize: 11),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (hasMatch || isUnread) ...[
-                                  const SizedBox(width: 8),
-                                  Column(
-                                    children: [
-                                      if (isUnread)
-                                        Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: const BoxDecoration(
-                                            color: CsColors.blue,
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                      if (hasMatch)
-                                        Padding(
-                                          padding: EdgeInsets.only(
-                                            top: isUnread ? 8 : 0,
-                                          ),
-                                          child: const Icon(
-                                            Icons.chevron_right,
-                                            size: 18,
-                                            color: CsColors.blue,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ],
-                              ],
+                          child: Dismissible(
+                            key: ValueKey(ev['id'] as String? ?? '$i'),
+                            direction: DismissDirection.endToStart,
+                            onDismissed: (_) => _dismissEvent(i),
+                            background: Container(
+                              margin: const EdgeInsets.symmetric(vertical: 5),
+                              decoration: BoxDecoration(
+                                color: CsColors.error,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              child: const Icon(
+                                Icons.delete_outline_rounded,
+                                color: CsColors.white,
+                                size: 24,
+                              ),
+                            ),
+                            child: _EventCard(
+                              title: title,
+                              body: body,
+                              timeAgo: _timeAgo(
+                                ev['created_at'] as String?, l),
+                              icon: EventService.eventIcon(eventType),
+                              isUnread: isUnread,
+                              hasNav: hasMatch,
+                              onTap: () => _onTap(ev),
                             ),
                           ),
                         );
@@ -356,4 +345,153 @@ class _TeamOption {
   final String id;
   final String label;
   const _TeamOption({required this.id, required this.label});
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  White event card – black icon pill, white icon
+// ─────────────────────────────────────────────────────────────────
+
+class _EventCard extends StatelessWidget {
+  const _EventCard({
+    required this.title,
+    required this.body,
+    required this.timeAgo,
+    required this.icon,
+    required this.isUnread,
+    required this.hasNav,
+    required this.onTap,
+  });
+
+  final String title;
+  final String body;
+  final String timeAgo;
+  final IconData icon;
+  final bool isUnread;
+  final bool hasNav;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F000000),
+            blurRadius: 16,
+            offset: Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 4,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          splashColor: CsColors.gray200.withValues(alpha: 0.5),
+          highlightColor: CsColors.gray100.withValues(alpha: 0.3),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Black icon pill, white icon ──
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F0F0F),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // ── Text column ──
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight:
+                              isUnread ? FontWeight.w700 : FontWeight.w500,
+                          color: const Color(0xFF111827),
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        body,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFF666666),
+                          height: 1.4,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        timeAgo,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w400,
+                          color: Color(0xFFA0A0A0),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ── Unread dot + chevron ──
+                if (hasNav || isUnread) ...[
+                  const SizedBox(width: 8),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isUnread)
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF3B82F6),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      if (hasNav)
+                        Padding(
+                          padding: EdgeInsets.only(top: isUnread ? 8 : 0),
+                          child: const Icon(
+                            Icons.chevron_right,
+                            size: 18,
+                            color: CsColors.gray400,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

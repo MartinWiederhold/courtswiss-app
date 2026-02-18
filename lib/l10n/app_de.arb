@@ -734,5 +734,14 @@
       "title": { "type": "String" }
     }
   },
-  "editExpenseTooltip": "Ausgabe bearbeiten"
+  "editExpenseTooltip": "Ausgabe bearbeiten",
+
+  "deleteAllNotifications": "Alle l\u00f6schen",
+  "deleteNotificationConfirm": "Benachrichtigung l\u00f6schen?",
+  "deleteAllNotificationsConfirm": "Alle Benachrichtigungen l\u00f6schen?",
+  "deleteAllNotificationsBody": "Alle Benachrichtigungen werden unwiderruflich gel\u00f6scht.",
+  "notifDeleted": "Benachrichtigung gel\u00f6scht",
+  "allNotifsDeleted": "Alle Benachrichtigungen gel\u00f6scht",
+  "notifDeleteError": "Benachrichtigung konnte nicht gel\u00f6scht werden.",
+  "undo": "R\u00fcckg\u00e4ngig"
 }

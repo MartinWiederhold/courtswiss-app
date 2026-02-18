@@ -216,6 +216,10 @@ DROP POLICY IF EXISTS cs_notifications_insert ON public.cs_notifications;
 CREATE POLICY cs_notifications_insert ON public.cs_notifications
   FOR INSERT WITH CHECK (true);  -- Trigger functions (SECURITY DEFINER) insert here
 
+DROP POLICY IF EXISTS cs_notifications_delete ON public.cs_notifications;
+CREATE POLICY cs_notifications_delete ON public.cs_notifications
+  FOR DELETE USING (recipient_user_id = auth.uid());
+
 
 -- ═══════════════════════════════════════════════════════════════════
 --  2. RESILIENT TRIGGER: Availability Changed → cs_events

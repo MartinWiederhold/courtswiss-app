@@ -1413,4 +1413,31 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get editExpenseTooltip => 'Ausgabe bearbeiten';
+
+  @override
+  String get deleteAllNotifications => 'Alle löschen';
+
+  @override
+  String get deleteNotificationConfirm => 'Benachrichtigung löschen?';
+
+  @override
+  String get deleteAllNotificationsConfirm =>
+      'Alle Benachrichtigungen löschen?';
+
+  @override
+  String get deleteAllNotificationsBody =>
+      'Alle Benachrichtigungen werden unwiderruflich gelöscht.';
+
+  @override
+  String get notifDeleted => 'Benachrichtigung gelöscht';
+
+  @override
+  String get allNotifsDeleted => 'Alle Benachrichtigungen gelöscht';
+
+  @override
+  String get notifDeleteError =>
+      'Benachrichtigung konnte nicht gelöscht werden.';
+
+  @override
+  String get undo => 'Rückgängig';
 }

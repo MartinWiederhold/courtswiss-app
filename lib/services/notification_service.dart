@@ -61,6 +61,25 @@ class NotificationService {
         .isFilter('read_at', null);
   }
 
+  /// Delete a single notification.
+  static Future<void> deleteNotification(String notificationId) async {
+    await _supabase
+        .from('cs_notifications')
+        .delete()
+        .eq('id', notificationId);
+  }
+
+  /// Delete all notifications for the current user.
+  static Future<void> deleteAllNotifications() async {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
+
+    await _supabase
+        .from('cs_notifications')
+        .delete()
+        .eq('recipient_user_id', uid);
+  }
+
   // ── Realtime ───────────────────────────────────────────────
 
   /// Subscribe to new notifications via Supabase Realtime.

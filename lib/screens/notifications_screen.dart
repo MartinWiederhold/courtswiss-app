@@ -40,7 +40,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _onTap(Map<String, dynamic> notif) async {
-    // Mark as read
     if (notif['read_at'] == null) {
       try {
         await NotificationService.markRead(notif['id'] as String);
@@ -51,7 +50,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final matchId = notif['match_id'] as String?;
     final teamId = notif['team_id'] as String?;
 
-    // Navigate to match for lineup notifications (published, auto-promotion, etc.)
     final lineupTypes = {
       'lineup_published',
       'auto_promotion',
@@ -84,7 +82,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
     }
 
-    // Reload to show read state
     _load();
   }
 
@@ -95,6 +92,54 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } catch (e) {
       if (!mounted) return;
       CsToast.error(context, AppLocalizations.of(context)!.notifLoadError);
+    }
+  }
+
+  Future<void> _deleteNotification(String id, int index) async {
+    final l = AppLocalizations.of(context)!;
+    final removed = _notifications[index];
+    setState(() => _notifications.removeAt(index));
+    try {
+      await NotificationService.deleteNotification(id);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _notifications.insert(index, removed));
+      CsToast.error(context, l.notifDeleteError);
+    }
+  }
+
+  Future<void> _deleteAllNotifications() async {
+    final l = AppLocalizations.of(context)!;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.deleteAllNotificationsConfirm),
+        content: Text(l.deleteAllNotificationsBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: CsColors.error,
+            ),
+            child: Text(l.deleteAllNotifications),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await NotificationService.deleteAllNotifications();
+      if (!mounted) return;
+      setState(() => _notifications.clear());
+      CsToast.success(context, l.allNotifsDeleted);
+    } catch (e) {
+      if (!mounted) return;
+      CsToast.error(context, l.notifDeleteError);
     }
   }
 
@@ -124,6 +169,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icons.warning_rounded;
       case 'roster_changed':
         return Icons.swap_horiz_rounded;
+      case 'availability_changed':
+        return Icons.event_available;
+      case 'dinner_rsvp':
+      case 'dinner_rsvp_yes':
+        return Icons.restaurant;
+      case 'carpool_offered':
+        return Icons.directions_car;
+      case 'carpool_passenger_joined':
+        return Icons.person_add;
+      case 'carpool_passenger_left':
+        return Icons.person_remove;
+      case 'expense_added':
+      case 'expense_share_due':
+        return Icons.receipt_long;
+      case 'expense_share_paid':
+        return Icons.paid;
       default:
         return Icons.notifications_outlined;
     }
@@ -156,6 +217,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               onPressed: _markAllRead,
               child: Text(l.markAllRead),
             ),
+          if (_notifications.isNotEmpty)
+            IconButton(
+              onPressed: _deleteAllNotifications,
+              icon: const Icon(Icons.delete_outline_rounded),
+              tooltip: l.deleteAllNotifications,
+            ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
       ),
@@ -181,6 +248,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     itemCount: _notifications.length,
                     itemBuilder: (context, i) {
                       final n = _notifications[i];
+                      final id = n['id'] as String? ?? '';
                       final isUnread = n['read_at'] == null;
                       final type = n['type'] as String? ?? '';
 
@@ -198,14 +266,35 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
                       return CsAnimatedEntrance.staggered(
                         index: i,
-                        child: _NotificationCard(
-                          title: title,
-                          body: body,
-                          timeAgo: _timeAgo(n['created_at'] as String?, l),
-                          icon: _notifIcon(type),
-                          isUnread: isUnread,
-                          hasNav: hasNav,
-                          onTap: () => _onTap(n),
+                        child: Dismissible(
+                          key: ValueKey(id),
+                          direction: DismissDirection.endToStart,
+                          onDismissed: (_) => _deleteNotification(id, i),
+                          background: Container(
+                            margin: const EdgeInsets.symmetric(vertical: 5),
+                            decoration: BoxDecoration(
+                              color: CsColors.error,
+                              borderRadius:
+                                  BorderRadius.circular(20),
+                            ),
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            child: const Icon(
+                              Icons.delete_outline_rounded,
+                              color: CsColors.white,
+                              size: 24,
+                            ),
+                          ),
+                          child: _NotificationCard(
+                            title: title,
+                            body: body,
+                            timeAgo:
+                                _timeAgo(n['created_at'] as String?, l),
+                            icon: _notifIcon(type),
+                            isUnread: isUnread,
+                            hasNav: hasNav,
+                            onTap: () => _onTap(n),
+                          ),
                         ),
                       );
                     },
@@ -216,7 +305,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  White notification card – premium, light, consistent with app
+//  White notification card – black icon pill, white icon
 // ─────────────────────────────────────────────────────────────────
 
 class _NotificationCard extends StatelessWidget {
@@ -247,12 +336,12 @@ class _NotificationCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x0F000000), // ~6% black
+            color: Color(0x0F000000),
             blurRadius: 16,
             offset: Offset(0, 4),
           ),
           BoxShadow(
-            color: Color(0x08000000), // ~3% black
+            color: Color(0x08000000),
             blurRadius: 4,
             offset: Offset(0, 1),
           ),
@@ -272,7 +361,7 @@ class _NotificationCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Icon container (black pill, white icon) ──
+                // ── Black icon pill, white icon ──
                 Container(
                   width: 40,
                   height: 40,
@@ -299,7 +388,7 @@ class _NotificationCard extends StatelessWidget {
                           fontSize: 14,
                           fontWeight:
                               isUnread ? FontWeight.w700 : FontWeight.w500,
-                          color: const Color(0xFF111827), // gray-900
+                          color: const Color(0xFF111827),
                           height: 1.3,
                         ),
                       ),
@@ -321,7 +410,7 @@ class _NotificationCard extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w400,
-                          color: Color(0xFFA0A0A0), // light gray
+                          color: Color(0xFFA0A0A0),
                         ),
                       ),
                     ],
@@ -339,7 +428,7 @@ class _NotificationCard extends StatelessWidget {
                           width: 8,
                           height: 8,
                           decoration: const BoxDecoration(
-                            color: Color(0xFF3B82F6), // subtle blue dot
+                            color: Color(0xFF3B82F6),
                             shape: BoxShape.circle,
                           ),
                         ),

@@ -1394,4 +1394,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get editExpenseTooltip => 'Edit expense';
+
+  @override
+  String get deleteAllNotifications => 'Delete all';
+
+  @override
+  String get deleteNotificationConfirm => 'Delete notification?';
+
+  @override
+  String get deleteAllNotificationsConfirm => 'Delete all notifications?';
+
+  @override
+  String get deleteAllNotificationsBody =>
+      'All notifications will be permanently deleted.';
+
+  @override
+  String get notifDeleted => 'Notification deleted';
+
+  @override
+  String get allNotifsDeleted => 'All notifications deleted';
+
+  @override
+  String get notifDeleteError => 'Couldn\'t delete notification.';
+
+  @override
+  String get undo => 'Undo';
 }
