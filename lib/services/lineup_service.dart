@@ -212,6 +212,16 @@ class LineupService {
     }
   }
 
+  // ── Confirm auto-promotion ───────────────────────────────
+
+  /// Confirm that the current user acknowledges their auto-promotion.
+  static Future<void> confirmPromotion(String eventId) async {
+    await _supabase.rpc(
+      'cs_confirm_promotion',
+      params: {'p_event_id': eventId},
+    );
+  }
+
   // ── Display helpers ────────────────────────────────────────
 
   /// Build a unified ordered list: starters first, then reserves,

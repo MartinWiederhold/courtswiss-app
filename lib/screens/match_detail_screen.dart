@@ -59,6 +59,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
   bool _lineupPublishing = false;
   List<LineupViolation> _lineupViolations = [];
 
+  // ── Auto-promotion state ──
+  Map<String, dynamic>? _pendingPromotion; // unconfirmed auto_promotion for me
+
   // ── Sub-request state ──
   List<Map<String, dynamic>> _subRequests = [];
   List<Map<String, dynamic>> _myPendingSubRequests = [];
@@ -446,6 +449,24 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         debugPrint('Sub requests load error: $e');
       }
 
+      // 7. Check for pending auto-promotion (for the current user)
+      Map<String, dynamic>? pendingPromotion;
+      try {
+        final events = await LineupService.getEvents(widget.matchId);
+        for (final ev in events) {
+          if (ev['event_type'] == 'auto_promotion' &&
+              ev['confirmed_at'] == null) {
+            final payload = ev['payload'] as Map<String, dynamic>?;
+            if (payload != null && payload['to'] == uid) {
+              pendingPromotion = ev;
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Lineup events load error: $e');
+      }
+
       if (!mounted) return;
       setState(() {
         _availability = avail;
@@ -457,6 +478,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         _lineupSlots = lineupSlots;
         _subRequests = subRequests;
         _myPendingSubRequests = myPendingSubRequests;
+        _pendingPromotion = pendingPromotion;
         _loading = false;
       });
 
@@ -640,6 +662,25 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         _myStatus = old;
         _availUpdating = false;
       });
+      CsToast.error(context, l10n.genericError);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  Auto-promotion confirmation
+  // ═══════════════════════════════════════════════════════════
+
+  Future<void> _confirmPromotion() async {
+    final eventId = _pendingPromotion?['id'] as String?;
+    if (eventId == null) return;
+    try {
+      await LineupService.confirmPromotion(eventId);
+      if (!mounted) return;
+      setState(() => _pendingPromotion = null);
+      HapticFeedback.mediumImpact();
+      CsToast.success(context, 'Teilnahme bestätigt!');
+    } catch (e) {
+      if (!mounted) return;
       CsToast.error(context, l10n.genericError);
     }
   }
@@ -1459,10 +1500,75 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       key: const ValueKey('tab_lineup'),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
+        if (_pendingPromotion != null) ...[
+          _buildPromotionBanner(),
+          const SizedBox(height: 8),
+        ],
         CsAnimatedEntrance(
           child: _buildLineupSection(lineupStatus),
         ),
       ],
+    );
+  }
+
+  /// Banner: "Du bist nachgerückt! Bitte bestätige deine Teilnahme."
+  Widget _buildPromotionBanner() {
+    final payload = _pendingPromotion?['payload'] as Map<String, dynamic>?;
+    final absentName = payload?['absent_name'] as String? ?? '?';
+
+    return CsAnimatedEntrance(
+      child: Container(
+        decoration: BoxDecoration(
+          color: CsColors.emerald.withValues(alpha: 0.08),
+          border: Border.all(color: CsColors.emerald.withValues(alpha: 0.4)),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.sports, size: 22, color: CsColors.emerald),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Du bist nachgerückt!',
+                    style: CsTextStyles.titleSmall.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: CsColors.emerald,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '$absentName hat abgesagt. Du spielst jetzt als Starter.',
+              style: CsTextStyles.bodySmall.copyWith(
+                color: CsColors.gray700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _confirmPromotion,
+                icon: const Icon(Icons.check_circle, size: 18),
+                label: const Text('Teilnahme bestätigen'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: CsColors.emerald,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
