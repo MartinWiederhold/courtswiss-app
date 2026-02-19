@@ -222,6 +222,18 @@ class LineupService {
     );
   }
 
+  // ── Decline auto-promotion ─────────────────────────────────
+
+  /// Decline an auto-promotion event. Marks the event as declined
+  /// and sets the player's availability to 'no', triggering the
+  /// auto-promotion chain for the next reserve.
+  static Future<void> declinePromotion(String eventId) async {
+    await _supabase.rpc(
+      'cs_decline_promotion',
+      params: {'p_event_id': eventId},
+    );
+  }
+
   // ── Display helpers ────────────────────────────────────────
 
   /// Build a unified ordered list: starters first, then reserves,

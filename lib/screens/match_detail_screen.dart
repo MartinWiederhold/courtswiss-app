@@ -656,6 +656,24 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         _myStatus = confirmed ?? status;
         _availUpdating = false;
       });
+
+      // Bei Absage: Auto-Promotion explizit auslösen als Sicherheitsnetz.
+      // Der DB-Trigger macht das normalerweise automatisch, aber falls
+      // der Status bereits 'no' war (z.B. Wiederholung nach App-Update),
+      // springt der Trigger über. Der RPC ist idempotent – doppelte
+      // Aufrufe schaden nicht.
+      if (status == 'no' && uid != null) {
+        try {
+          final promoResult = await LineupService.triggerAutoPromotion(
+            matchId: widget.matchId,
+            absentUserId: uid,
+          );
+          debugPrint('AUTO_PROMOTE explicit result: $promoResult');
+        } catch (e) {
+          debugPrint('AUTO_PROMOTE explicit call failed (non-blocking): $e');
+        }
+        _load(); // Aufstellung + Events neu laden
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -679,10 +697,18 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       setState(() => _pendingPromotion = null);
       HapticFeedback.mediumImpact();
       CsToast.success(context, 'Teilnahme bestätigt!');
+      _load(); // Aufstellung neu laden
     } catch (e) {
       if (!mounted) return;
       CsToast.error(context, l10n.genericError);
     }
+  }
+
+  /// Promoted player declines → triggers auto-promotion chain for next reserve.
+  Future<void> _declinePromotion() async {
+    setState(() => _pendingPromotion = null);
+    await _setAvailability('no'); // triggers trg_auto_promote_on_absence
+    _load(); // Aufstellung neu laden
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1297,6 +1323,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
       key: const ValueKey('tab_overview'),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
+        // ── Auto-promotion confirmation banner ──
+        if (_pendingPromotion != null) ...[
+          _buildPromotionBanner(),
+          const SizedBox(height: 8),
+        ],
         // ── Match info card ──
         CsAnimatedEntrance(
           child: CsCard(
@@ -1511,7 +1542,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     );
   }
 
-  /// Banner: "Du bist nachgerückt! Bitte bestätige deine Teilnahme."
+  /// Banner: "Du bist nachgerückt! Bestätige oder sage ab."
   Widget _buildPromotionBanner() {
     final payload = _pendingPromotion?['payload'] as Map<String, dynamic>?;
     final absentName = payload?['absent_name'] as String? ?? '?';
@@ -1550,21 +1581,44 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _confirmPromotion,
-                icon: const Icon(Icons.check_circle, size: 18),
-                label: const Text('Teilnahme bestätigen'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CsColors.emerald,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+            Row(
+              children: [
+                // ── Bestätigen ──
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _confirmPromotion,
+                    icon: const Icon(Icons.check_circle, size: 18),
+                    label: const Text('Bestätigen'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: CsColors.emerald,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-              ),
+                const SizedBox(width: 10),
+                // ── Absagen ──
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _declinePromotion,
+                    icon: Icon(Icons.cancel, size: 18, color: CsColors.error),
+                    label: Text(
+                      'Absagen',
+                      style: TextStyle(color: CsColors.error),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: CsColors.error.withValues(alpha: 0.5)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

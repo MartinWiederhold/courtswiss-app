@@ -1723,55 +1723,57 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         const SizedBox(height: 8),
       ],
 
-      // Invite link
-      CsAnimatedEntrance(
-        delay: const Duration(milliseconds: 60),
-        child: CsCard(
-          backgroundColor: CsColors.white,
-          borderColor: CsColors.gray200.withValues(alpha: 0.45),
-          boxShadow: CsShadows.soft,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.link,
-                    size: 18,
-                    color: CsColors.gray900,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    l.inviteLinkTitle,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+      // Invite link (only visible for captain / team creator)
+      if (_isAdmin) ...[
+        CsAnimatedEntrance(
+          delay: const Duration(milliseconds: 60),
+          child: CsCard(
+            backgroundColor: CsColors.white,
+            borderColor: CsColors.gray200.withValues(alpha: 0.45),
+            boxShadow: CsShadows.soft,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.link,
+                      size: 18,
                       color: CsColors.gray900,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                l.inviteLinkDescription,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w400,
-                  color: CsColors.gray600,
+                    const SizedBox(width: 10),
+                    Text(
+                      l.inviteLinkTitle,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: CsColors.gray900,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              CsPrimaryButton(
-                onPressed: _shareInviteLink,
-                label: l.shareLink,
-                icon: const Icon(Icons.share, size: 18),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  l.inviteLinkDescription,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    color: CsColors.gray600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                CsPrimaryButton(
+                  onPressed: _shareInviteLink,
+                  label: l.shareLink,
+                  icon: const Icon(Icons.share, size: 18),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-      const SizedBox(height: 8),
+        const SizedBox(height: 8),
+      ],
     ];
   }
 
