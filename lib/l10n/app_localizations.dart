@@ -617,7 +617,7 @@ abstract class AppLocalizations {
   /// No description provided for @opponent.
   ///
   /// In de, this message translates to:
-  /// **'Gegner *'**
+  /// **'Gegner'**
   String get opponent;
 
   /// No description provided for @opponentHint.

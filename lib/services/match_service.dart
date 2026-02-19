@@ -62,7 +62,7 @@ class MatchService {
     required String teamId,
     required String opponent,
     required DateTime matchAt,
-    required bool isHome,
+    bool? isHome,
     String? location,
     String? note,
   }) async {

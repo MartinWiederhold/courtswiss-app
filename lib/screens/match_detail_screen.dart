@@ -1293,7 +1293,15 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
   Widget _buildOverviewTab() {
     final m = _match;
-    final isHome = m['is_home'] == true;
+    final isHome = m['is_home'] as bool?;
+    final String homeLabelText;
+    if (isHome == true) {
+      homeLabelText = l10n.home;
+    } else if (isHome == false) {
+      homeLabelText = l10n.away;
+    } else {
+      homeLabelText = l10n.unknownPlayer; // "Unbekannt"
+    }
     final matchAt = DateTime.tryParse(m['match_at'] ?? '')?.toLocal();
     final dateStr = matchAt != null
         ? '${matchAt.day.toString().padLeft(2, '0')}.'
@@ -1349,7 +1357,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                         borderRadius: BorderRadius.circular(CsRadii.full),
                       ),
                       child: Text(
-                        isHome ? l10n.home : l10n.away,
+                        homeLabelText,
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,

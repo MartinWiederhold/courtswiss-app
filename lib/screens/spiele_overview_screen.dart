@@ -161,8 +161,25 @@ class _SpieleOverviewScreenState extends State<SpieleOverviewScreen> {
 
   Widget _buildMatchTile(Map<String, dynamic> match) {
     final l = AppLocalizations.of(context)!;
-    final isHome = match['is_home'] == true;
+    final isHome = match['is_home'] as bool?;
     final teamName = match['team_name'] as String? ?? '–';
+
+    final IconData homeIcon;
+    final String homeLabel;
+    final CsChipVariant homeVariant;
+    if (isHome == true) {
+      homeIcon = Icons.home_outlined;
+      homeLabel = l.home;
+      homeVariant = CsChipVariant.info;
+    } else if (isHome == false) {
+      homeIcon = Icons.directions_car_outlined;
+      homeLabel = l.away;
+      homeVariant = CsChipVariant.amber;
+    } else {
+      homeIcon = Icons.help_outline;
+      homeLabel = l.unknownPlayer; // "Unbekannt"
+      homeVariant = CsChipVariant.neutral;
+    }
 
     return CsCard(
       backgroundColor: CsColors.white,
@@ -177,17 +194,14 @@ class _SpieleOverviewScreenState extends State<SpieleOverviewScreen> {
           Row(
             children: [
               Icon(
-                isHome
-                    ? Icons.home_outlined
-                    : Icons.directions_car_outlined,
+                homeIcon,
                 color: CsColors.gray900,
                 size: 20,
               ),
               const SizedBox(width: 10),
               CsStatusChip(
-                label: isHome ? l.home : l.away,
-                variant:
-                    isHome ? CsChipVariant.info : CsChipVariant.amber,
+                label: homeLabel,
+                variant: homeVariant,
               ),
               const SizedBox(width: 8),
               // Team name chip

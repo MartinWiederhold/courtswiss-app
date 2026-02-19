@@ -98,7 +98,7 @@
 
   "save": "Save",
   "matchDetails": "Match Details",
-  "opponent": "Opponent *",
+  "opponent": "Opponent",
   "opponentHint": "e.g. TC Zurich",
   "pleaseComplete": "Please fill in",
   "dateAndTime": "Date & Time",

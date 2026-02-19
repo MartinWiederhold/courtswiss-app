@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../l10n/app_localizations.dart';
 import '../services/match_service.dart';
 import '../theme/cs_theme.dart';
@@ -27,7 +28,7 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
   final _opponentCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
-  bool _isHome = true;
+  bool? _isHome = true; // true=Heim, false=Auswärts, null=unbekannt
   DateTime? _matchDate;
   TimeOfDay? _matchTime;
   bool _saving = false;
@@ -40,7 +41,7 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
       _opponentCtrl.text = m['opponent'] as String? ?? '';
       _locationCtrl.text = m['location'] as String? ?? '';
       _noteCtrl.text = m['note'] as String? ?? '';
-      _isHome = m['is_home'] == true;
+      _isHome = m['is_home'] as bool?;
       final dt = DateTime.tryParse(m['match_at'] ?? '')?.toLocal();
       if (dt != null) {
         _matchDate = DateTime(dt.year, dt.month, dt.day);
@@ -96,9 +97,13 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
     );
 
     try {
+      final opponentVal = _opponentCtrl.text.trim().isEmpty
+          ? null
+          : _opponentCtrl.text.trim();
+
       if (widget.isEditing) {
         await MatchService.updateMatch(widget.existingMatch!['id'] as String, {
-          'opponent': _opponentCtrl.text.trim(),
+          'opponent': opponentVal,
           'match_at': matchAt.toUtc().toIso8601String(),
           'is_home': _isHome,
           'location': _locationCtrl.text.trim().isEmpty
@@ -109,7 +114,7 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
       } else {
         await MatchService.createMatch(
           teamId: widget.teamId,
-          opponent: _opponentCtrl.text.trim(),
+          opponent: opponentVal ?? '',
           matchAt: matchAt,
           isHome: _isHome,
           location: _locationCtrl.text.trim().isEmpty
@@ -189,9 +194,6 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
                           hintText: l.opponentHint,
                         ),
                         style: const TextStyle(color: CsColors.gray900),
-                        validator: (v) => (v == null || v.trim().isEmpty)
-                            ? l.pleaseComplete
-                            : null,
                       ),
                     ],
                   ),
@@ -255,23 +257,53 @@ class _CreateMatchScreenState extends State<CreateMatchScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _isHome ? l.homeGame : l.awayGame,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: CsColors.gray900,
-                              ),
+                      SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<bool?>(
+                          segments: [
+                            ButtonSegment<bool?>(
+                              value: true,
+                              label: Text(l.home),
+                              icon: const Icon(Icons.home, size: 16),
+                            ),
+                            ButtonSegment<bool?>(
+                              value: false,
+                              label: Text(l.away),
+                              icon: const Icon(Icons.directions_car_outlined, size: 16),
+                            ),
+                            const ButtonSegment<bool?>(
+                              value: null,
+                              label: Text('Unbekannt'),
+                              icon: Icon(Icons.help_outline, size: 16),
+                            ),
+                          ],
+                          selected: {_isHome},
+                          onSelectionChanged: (v) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _isHome = v.first);
+                          },
+                          style: ButtonStyle(
+                            backgroundColor: WidgetStateProperty.resolveWith((states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return CsColors.black;
+                              }
+                              return CsColors.white;
+                            }),
+                            foregroundColor: WidgetStateProperty.resolveWith((states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return CsColors.white;
+                              }
+                              return CsColors.gray900;
+                            }),
+                            textStyle: const WidgetStatePropertyAll(
+                              TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            side: const WidgetStatePropertyAll(
+                              BorderSide(color: CsColors.gray300),
                             ),
                           ),
-                          Switch(
-                            value: _isHome,
-                            onChanged: (v) => setState(() => _isHome = v),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   ),

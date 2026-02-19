@@ -295,7 +295,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get matchDetails => 'Spieldetails';
 
   @override
-  String get opponent => 'Gegner *';
+  String get opponent => 'Gegner';
 
   @override
   String get opponentHint => 'z.B. TC Zürich';
