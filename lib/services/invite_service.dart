@@ -25,19 +25,19 @@ class InviteService {
     return (teamId: data['team_id'] as String, joined: data['joined'] as bool);
   }
 
-  /// Build the invite deep link (custom scheme)
+  /// Build the invite deep link (custom scheme – used internally by the app)
   static String buildDeepLink(String token) {
     return 'lineup://join?token=$token';
   }
 
-  /// Build the universal link placeholder
-  static String buildUniversalLink(String token) {
-    return 'https://lineup.app/join?token=$token';
+  /// Build the shareable HTTPS link (clickable in WhatsApp, etc.)
+  static String buildShareLink(String token) {
+    return 'https://courtswiss.netlify.app/join?token=$token';
   }
 
   /// Build the share text
   static String buildShareText(String token, String teamName) {
-    final link = buildDeepLink(token);
+    final link = buildShareLink(token);
     return 'Tritt meinem Interclub-Team "$teamName" bei Lineup bei:\n$link';
   }
 }

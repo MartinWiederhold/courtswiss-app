@@ -52,15 +52,13 @@
                 <data android:scheme="io.courtswiss" android:host="reset-password" />
             </intent-filter>
 
-            <!-- Universal Link (prepared for later hosting): https://lineup.app/join?token=XYZ -->
-            <!--
+            <!-- App Link: https://courtswiss.netlify.app/join?token=XYZ -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="lineup.app" android:pathPrefix="/join" />
+                <data android:scheme="https" android:host="courtswiss.netlify.app" android:pathPrefix="/join" />
             </intent-filter>
-            -->
         </activity>
         <!-- FCM: default notification channel (matches LocalNotificationService) -->
         <meta-data
