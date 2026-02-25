@@ -32,7 +32,8 @@ class InviteService {
 
   /// Build the shareable HTTPS link (clickable in WhatsApp, etc.)
   static String buildShareLink(String token) {
-    return 'https://courtswiss.netlify.app/join?token=$token';
+    // Canonical URL uses trailing slash to match Netlify join route.
+    return 'https://courtswiss.netlify.app/join/?token=$token';
   }
 
   /// Build the share text

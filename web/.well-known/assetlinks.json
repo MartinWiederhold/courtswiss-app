@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ch.onewell.lineup",
+      "sha256_cert_fingerprints": [
+        "77:EF:14:AF:60:50:11:79:AF:2A:C1:D4:A1:7E:FB:23:C5:4F:75:64:B5:29:86:16:2E:19:9E:46:AA:56:39:2F"
+      ]
+    }
+  }
+]

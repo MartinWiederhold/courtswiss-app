@@ -1,0 +1,14 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "A6P8UG6P5N.ch.onewell.lineup",
+        "paths": [
+          "/join*",
+          "/join/*"
+        ]
+      }
+    ]
+  }
+}
