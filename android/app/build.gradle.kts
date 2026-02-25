@@ -39,13 +39,13 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
-}
 
     packaging {
         jniLibs {
-            keepDebugSymbols += setOf("**/*.so")
+            keepDebugSymbols.add("**/*.so")
         }
     }
+}
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
