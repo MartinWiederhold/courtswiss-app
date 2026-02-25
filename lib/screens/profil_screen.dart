@@ -13,6 +13,7 @@ import '../l10n/app_localizations.dart';
 import '../main.dart' show localeController;
 import '../services/account_service.dart';
 import '../services/push_prefs_service.dart';
+import '../services/support_service.dart';
 import '../theme/cs_theme.dart';
 import '../widgets/delete_account_dialog.dart';
 import '../widgets/ui/ui.dart';
@@ -93,6 +94,20 @@ class _ProfilScreenState extends State<ProfilScreen> {
   }
 
   bool _isTypeEnabled(String type) => !_typesDisabled.contains(type);
+
+  Future<void> _openSupportContactSheet() async {
+    debugPrint('[support] opened');
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: CsColors.black.withValues(alpha: 0.35),
+      sheetAnimationStyle: CsMotion.sheet,
+      builder: (_) => _SupportContactSheet(parentContext: context),
+    );
+  }
 
   // ── Locale helpers ─────────────────────────────────────
 
@@ -566,6 +581,45 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   const SizedBox(height: 14),
                 ],
 
+                // ── Kontakt section ──────────────────────────
+                CsAnimatedEntrance(
+                  delay: const Duration(milliseconds: 200),
+                  child: CsLightCard(
+                    color: Colors.white,
+                    border: Border.all(color: CsColors.gray200, width: 0.5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        Icons.support_agent_outlined,
+                        color: CsColors.gray800,
+                      ),
+                      title: Text(
+                        'Kontakt',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: CsColors.gray900,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Kontakt aufnehmen',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: CsColors.gray500,
+                        ),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: _openSupportContactSheet,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
                 // ── App version ─────────────────────────────
                 CsAnimatedEntrance(
                   delay: const Duration(milliseconds: 210),
@@ -655,6 +709,177 @@ class _ProfilScreenState extends State<ProfilScreen> {
       default:
         return Icons.notifications_outlined;
     }
+  }
+}
+
+class _SupportContactSheet extends StatefulWidget {
+  final BuildContext parentContext;
+
+  const _SupportContactSheet({required this.parentContext});
+
+  @override
+  State<_SupportContactSheet> createState() => _SupportContactSheetState();
+}
+
+class _SupportContactSheetState extends State<_SupportContactSheet> {
+  static const _categories = <String, String>{
+    'TECHNICAL': 'Technisches Problem',
+    'GENERAL': 'Allgemeine Frage',
+    'FEEDBACK': 'Feedback',
+  };
+
+  final _subjectCtrl = TextEditingController();
+  final _messageCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+
+  String _category = 'TECHNICAL';
+  bool _sending = false;
+
+  bool get _isMessageValid => SupportService.isValidMessage(_messageCtrl.text);
+  bool get _isEmailValid => SupportService.isValidEmail(_emailCtrl.text);
+  bool get _isFormValid => _isMessageValid && _isEmailValid;
+
+  @override
+  void initState() {
+    super.initState();
+    _subjectCtrl.addListener(_onChanged);
+    _messageCtrl.addListener(_onChanged);
+    _emailCtrl.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    _subjectCtrl.removeListener(_onChanged);
+    _messageCtrl.removeListener(_onChanged);
+    _emailCtrl.removeListener(_onChanged);
+    _subjectCtrl.dispose();
+    _messageCtrl.dispose();
+    _emailCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _submit() async {
+    if (_sending || !_isFormValid) return;
+
+    setState(() => _sending = true);
+
+    try {
+      await SupportService.sendContactMessage(
+        category: _category,
+        subject: _subjectCtrl.text,
+        message: _messageCtrl.text,
+        email: _emailCtrl.text,
+      );
+      debugPrint(
+        '[support] send_success category=$_category hasEmail=${_emailCtrl.text.trim().isNotEmpty}',
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      CsToast.success(widget.parentContext, 'Danke! Wir melden uns.');
+    } catch (e) {
+      debugPrint('[support] send_failed category=$_category error=$e');
+      if (!mounted) return;
+      setState(() => _sending = false);
+      CsToast.error(
+        widget.parentContext,
+        'Senden fehlgeschlagen. Bitte später erneut versuchen.',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final messageLen = _messageCtrl.text.trim().length;
+
+    return CsBottomSheetForm(
+      title: 'Kontakt',
+      ctaLabel: 'Senden',
+      ctaLoading: _sending,
+      onCta: (_sending || !_isFormValid) ? null : _submit,
+      secondaryLabel: 'Abbrechen',
+      onSecondary: _sending ? null : () => Navigator.of(context).pop(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Kategorie *',
+            style: CsTextStyles.labelSmall,
+          ),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String>(
+            value: _category,
+            decoration: const InputDecoration(),
+            items: _categories.entries
+                .map(
+                  (entry) => DropdownMenuItem<String>(
+                    value: entry.key,
+                    child: Text(entry.value),
+                  ),
+                )
+                .toList(),
+            onChanged: _sending
+                ? null
+                : (value) {
+                    if (value == null) return;
+                    setState(() => _category = value);
+                  },
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Betreff',
+            style: CsTextStyles.labelSmall,
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _subjectCtrl,
+            enabled: !_sending,
+            maxLength: 200,
+            decoration: const InputDecoration(
+              hintText: 'Optional',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Nachricht *',
+            style: CsTextStyles.labelSmall,
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _messageCtrl,
+            enabled: !_sending,
+            minLines: 5,
+            maxLines: 8,
+            maxLength: 4000,
+            decoration: InputDecoration(
+              hintText: 'Beschreibe dein Anliegen',
+              errorText: messageLen == 0 || _isMessageValid
+                  ? null
+                  : 'Mindestens 10 und maximal 4000 Zeichen',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'E-Mail',
+            style: CsTextStyles.labelSmall,
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _emailCtrl,
+            enabled: !_sending,
+            keyboardType: TextInputType.emailAddress,
+            maxLength: 200,
+            decoration: InputDecoration(
+              hintText: 'Optional',
+              errorText: _isEmailValid ? null : 'Ungültige E-Mail-Adresse',
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

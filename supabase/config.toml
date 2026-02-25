@@ -410,3 +410,10 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/match-reminders/deno.json"
 entrypoint = "./functions/match-reminders/index.ts"
+
+# ── support-contact: Send support contact email via SendGrid ──────
+[functions.support-contact]
+enabled = true
+verify_jwt = false
+import_map = "./functions/support-contact/deno.json"
+entrypoint = "./functions/support-contact/index.ts"

@@ -1,0 +1,3 @@
+String detectSupportPlatform() {
+  return 'web';
+}
