@@ -8,6 +8,7 @@
 // ──────────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../l10n/app_localizations.dart';
 import '../main.dart' show localeController;
@@ -810,23 +811,11 @@ class _SupportContactSheetState extends State<_SupportContactSheet> {
             style: CsTextStyles.labelSmall,
           ),
           const SizedBox(height: 6),
-          DropdownButtonFormField<String>(
+          _SupportCategoryDropdown(
             value: _category,
-            decoration: const InputDecoration(),
-            items: _categories.entries
-                .map(
-                  (entry) => DropdownMenuItem<String>(
-                    value: entry.key,
-                    child: Text(entry.value),
-                  ),
-                )
-                .toList(),
-            onChanged: _sending
-                ? null
-                : (value) {
-                    if (value == null) return;
-                    setState(() => _category = value);
-                  },
+            labels: _categories,
+            enabled: !_sending,
+            onChanged: (value) => setState(() => _category = value),
           ),
           const SizedBox(height: 14),
           Text(
@@ -879,6 +868,230 @@ class _SupportContactSheetState extends State<_SupportContactSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SupportCategoryDropdown extends StatefulWidget {
+  final String value;
+  final Map<String, String> labels;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  const _SupportCategoryDropdown({
+    required this.value,
+    required this.labels,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  @override
+  State<_SupportCategoryDropdown> createState() => _SupportCategoryDropdownState();
+}
+
+class _SupportCategoryDropdownState extends State<_SupportCategoryDropdown> {
+  final _link = LayerLink();
+  final _fieldKey = GlobalKey();
+  OverlayEntry? _entry;
+  bool _open = false;
+
+  @override
+  void dispose() {
+    _close();
+    super.dispose();
+  }
+
+  void _close() {
+    _entry?.remove();
+    _entry?.dispose();
+    _entry = null;
+    if (_open) {
+      _open = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _toggle() {
+    if (!widget.enabled) return;
+    if (_open) {
+      _close();
+      return;
+    }
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    HapticFeedback.selectionClick();
+
+    final box = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return;
+
+    final fieldSize = box.size;
+    final fieldGlobal = box.localToGlobal(Offset.zero);
+    final screenH = MediaQuery.of(context).size.height;
+    final bottomPad = MediaQuery.of(context).viewInsets.bottom;
+
+    final spaceBelow = screenH - bottomPad - fieldGlobal.dy - fieldSize.height - 8;
+    final spaceAbove = fieldGlobal.dy - MediaQuery.of(context).padding.top - 8;
+    final openAbove = spaceBelow < 180 && spaceAbove > spaceBelow;
+    final maxH = openAbove
+        ? spaceAbove.clamp(120, 280).toDouble()
+        : spaceBelow.clamp(120, 280).toDouble();
+
+    _entry = OverlayEntry(
+      builder: (_) => _SupportDropdownOverlay(
+        link: _link,
+        width: fieldSize.width,
+        maxHeight: maxH,
+        openAbove: openAbove,
+        onDismiss: _close,
+        items: widget.labels.entries.map((entry) {
+          final selected = entry.key == widget.value;
+          return InkWell(
+            onTap: () {
+              _close();
+              if (entry.key != widget.value) {
+                HapticFeedback.selectionClick();
+                widget.onChanged(entry.key);
+              }
+            },
+            child: Container(
+              height: 46,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              color: selected ? CsColors.gray50 : Colors.transparent,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      entry.value,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                        color: CsColors.gray900,
+                      ),
+                    ),
+                  ),
+                  if (selected)
+                    const Icon(Icons.check, size: 16, color: CsColors.gray900),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+
+    Overlay.of(context).insert(_entry!);
+    _open = true;
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = widget.labels[widget.value] ?? widget.value;
+
+    return CompositedTransformTarget(
+      link: _link,
+      child: GestureDetector(
+        key: _fieldKey,
+        onTap: _toggle,
+        child: InputDecorator(
+          decoration: InputDecoration(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            hintText: 'Bitte wählen',
+            suffixIcon: AnimatedRotation(
+              turns: _open ? 0.5 : 0.0,
+              duration: const Duration(milliseconds: 130),
+              curve: Curves.easeOut,
+              child: const Icon(
+                Icons.arrow_drop_down,
+                color: CsColors.gray500,
+              ),
+            ),
+          ),
+          isEmpty: false,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 16, color: CsColors.gray900),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SupportDropdownOverlay extends StatelessWidget {
+  final LayerLink link;
+  final double width;
+  final double maxHeight;
+  final bool openAbove;
+  final VoidCallback onDismiss;
+  final List<Widget> items;
+
+  const _SupportDropdownOverlay({
+    required this.link,
+    required this.width,
+    required this.maxHeight,
+    required this.openAbove,
+    required this.onDismiss,
+    required this.items,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: onDismiss,
+            behavior: HitTestBehavior.opaque,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        CompositedTransformFollower(
+          link: link,
+          targetAnchor: openAbove ? Alignment.topLeft : Alignment.bottomLeft,
+          followerAnchor: openAbove ? Alignment.bottomLeft : Alignment.topLeft,
+          offset: Offset(0, openAbove ? -4 : 4),
+          child: SizedBox(
+            width: width,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 130),
+              curve: Curves.easeOut,
+              builder: (_, t, child) => Opacity(
+                opacity: t,
+                child: Transform.translate(
+                  offset: Offset(0, (openAbove ? 4 : -4) * (1 - t)),
+                  child: child,
+                ),
+              ),
+              child: Container(
+                constraints: BoxConstraints(maxHeight: maxHeight),
+                decoration: BoxDecoration(
+                  color: CsColors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: CsColors.gray200),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 12,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Material(
+                  color: Colors.transparent,
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    children: items,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
